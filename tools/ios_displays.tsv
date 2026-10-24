@@ -1,0 +1,70 @@
+# iPhone and iPad native display resolutions for tools/odyssey.py --preset.
+# Source: https://www.ios-resolution.com (Family & Model, Physical Width/Height,
+# Screen Diagonal and Release columns), retrieved 2026-10-23. Only iPhone and
+# iPad rows are kept, limited to models that run iOS/iPadOS 26, the app's
+# deployment target (dm/ios/project.yml). Pixels are portrait, as listed there.
+# The preset name is the model lowercased with other characters replaced by -.
+# iPhone Duo is omitted: --preset duo (or iphone-duo) builds its live fold layouts.
+# iPad rows build the live 4:3 preparation; wider iPhone rows build their own aspect.
+# model	physical_width	physical_height	diagonal	release
+iPhone 18 Pro Max	1320	2868	6.9"	2026-09-18
+iPhone 18 Pro	1206	2622	6.3"	2026-09-18
+iPhone 17e	1170	2532	6.1"	2026-03-11
+iPad Air (8th gen 13")	2048	2732	13"	2026-03-11
+iPad Air (8th gen 11")	1640	2360	11"	2026-03-11
+iPad Pro (8th gen 13")	2064	2752	13"	2025-10-22
+iPad Pro (8th gen 11")	1668	2420	11"	2025-10-22
+iPhone Air	1260	2736	6.5"	2025-09-19
+iPhone 17 Pro Max	1320	2868	6.9"	2025-09-19
+iPhone 17 Pro	1206	2622	6.3"	2025-09-19
+iPhone 17	1206	2622	6.3"	2025-09-19
+iPad Air (7th gen 13")	2048	2732	13"	2025-03-12
+iPad Air (7th gen 11")	1640	2360	11"	2025-03-12
+iPad 11th gen	1640	2360	11"	2025-03-12
+iPhone 16e	1170	2532	6.1"	2025-02-19
+iPad Mini (7th gen)	1488	2266	8.3"	2024-10-23
+iPhone 16 Pro Max	1320	2868	6.9"	2024-09-09
+iPhone 16 Pro	1206	2622	6.3"	2024-09-09
+iPhone 16 Plus	1290	2796	6.7"	2024-09-09
+iPhone 16	1179	2556	6.1"	2024-09-09
+iPad Pro (7th gen 13")	2064	2752	13"	2024-05-15
+iPad Pro (7th gen 11")	1668	2420	11"	2024-05-15
+iPad Air (6th gen 13")	2048	2732	13"	2024-05-15
+iPad Air (6th gen 11")	1640	2360	11"	2024-05-15
+iPhone 15 Pro Max	1290	2796	6.7"	2023-09-22
+iPhone 15 Pro	1179	2556	6.1"	2023-09-22
+iPhone 15 Plus	1290	2796	6.7"	2023-09-22
+iPhone 15	1179	2556	6.1"	2023-09-22
+iPad Pro (6th gen 12.9")	2048	2732	12.9"	2022-10-26
+iPad Pro (6th gen 11")	1668	2388	11"	2022-10-26
+iPad 10th gen	1640	2360	10.9"	2022-10-26
+iPhone 14 Plus	1284	2778	6.7"	2022-10-07
+iPhone 14 Pro Max	1290	2796	6.7"	2022-09-16
+iPhone 14 Pro	1179	2556	6.1"	2022-09-16
+iPhone 14	1170	2532	6.1"	2022-09-16
+iPhone SE 3rd gen	750	1334	4.7"	2022-03-08
+iPad Air (5th gen)	1640	2360	10.9"	2022-03-08
+iPad Mini (6th gen)	1488	2266	8.3"	2021-09-24
+iPhone 13	1170	2532	6.06"	2021-09-14
+iPhone 13 mini	1080	2340	5.42"	2021-09-14
+iPhone 13 Pro Max	1284	2778	6.68"	2021-09-14
+iPhone 13 Pro	1170	2532	6.06"	2021-09-14
+iPad 9th gen	1620	2160	10.2"	2021-09-14
+iPad Pro (5th gen 12.9")	2048	2732	12.9"	2021-05-21
+iPad Pro (5th gen 11")	1668	2388	11"	2021-05-21
+iPad Air (4th gen)	1640	2360	10.9"	2020-10-23
+iPhone 12	1170	2532	6.06"	2020-10-13
+iPhone 12 mini	1080	2340	5.42"	2020-10-13
+iPhone 12 Pro Max	1284	2778	6.68"	2020-10-13
+iPhone 12 Pro	1170	2532	6.06"	2020-10-13
+iPad 8th gen	1620	2160	10.2"	2020-09-18
+iPhone SE 2nd gen	750	1334	4.7"	2020-04-24
+iPad Pro (4th gen 12.9")	2048	2732	12.9"	2020-03-25
+iPad Pro (4th gen 11")	1668	2388	11"	2020-03-25
+iPhone 11 Pro Max	1242	2688	6.46"	2019-09-20
+iPhone 11 Pro	1125	2436	5.85"	2019-09-20
+iPhone 11	828	1792	6.1"	2019-09-20
+iPad Mini (5th gen)	1536	2048	7.9"	2019-03-18
+iPad Air (3rd gen)	1668	2224	10.5"	2019-03-18
+iPad Pro (3rd gen 12.9")	2048	2732	12.9"	2018-11-07
+iPad Pro (3rd gen 11")	1668	2388	11"	2018-11-07

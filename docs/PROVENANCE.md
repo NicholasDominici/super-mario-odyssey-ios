@@ -18,6 +18,10 @@ aspect-ratio strategy documented by SMO-AAR at commit
 `e8fd670d1faeab3d8c4904177928bcfd14afb42c`. It doesn't vendor that mod's source
 or game-bearing outputs. Its primary-source reference is linked in README.md.
 
+`tools/ios_displays.tsv` records iPhone and iPad model names and native display
+resolutions from [ios-resolution.com](https://www.ios-resolution.com), retrieved
+2026-10-23, limited to models that run iOS/iPadOS 26.
+
 `dm/gfx/tools/dmsh_xlate_bin` contains the upstream redistributable **tool**
 binaries and managed dependencies matching `dmsh_chain.lock`, not shaders from
 a game. They are retained because rebuilding the translator changes its shader

@@ -21,6 +21,8 @@ have been tested in gameplay. [Installation](#install-it-yourself)
 - A separate **239:110 iPhone view**, matched to the tested iPhone 17 Pro Max.
 - **Live Duo layouts** in the 4:3-prepared build: camera, HUD, safe areas and
   controls adapt together through landscape folding without restarting the game.
+- **Per-model display presets** for iPhone and iPad models that run iOS 26, using
+  each model's native resolution from [ios-resolution.com](https://www.ios-resolution.com).
 - **Shake-to-throw Cappy**, using a compatible physical controller's motion sensors.
 - The game's original left/right vibration patterns, translated to controller haptics.
 - **PS5 DualSense support**, with independent handle haptics and adaptive trigger feedback for supported game events.
@@ -80,6 +82,18 @@ the same guarded camera/HUD path; `duo` makes the intended target explicit.
 Actual scene geometry and safe insets drive folding, rather than the phone/tablet
 device name. The separate `--preset iphone` retains the **239:110** preparation
 for the tested iPhone 17 Pro Max; use the Duo preset for a Duo.
+
+You can also pass your iPhone or iPad model, such as `--preset iphone-16-pro` or
+`--preset ipad-air-6th-gen-11`; the model name as listed, in quotes, works too.
+Run `python tools/odyssey.py --list-presets` to see every model. iPad models
+select the same live 4:3 build as `--preset ipad`, which fits the real screen at
+runtime; `--preset iphone-duo` is the same as `--preset duo`. iPhone models are
+wider than 16:9, so they build a static camera/HUD preparation at that model's
+exact native aspect. Model names and resolutions come from
+[ios-resolution.com](https://www.ios-resolution.com) and are kept in
+[tools/ios_displays.tsv](tools/ios_displays.tsv). The build doesn't detect your
+device, so choose the model you'll install on. Of the iPhone shapes, only 239:110
+(iPhone 17 Pro Max) has been tested in gameplay.
 
 The live path is enabled by default only after both exact-build camera and HUD
 guards pass. Unsupported preparations or geometry keep proportional composition.
@@ -214,8 +228,9 @@ Allow about **40 GB free on the Mac** for game files, caches and packaging and
    ```
 
    For the tested iPhone 17 Pro Max layout, change `--preset ipad` to
-   `--preset iphone`. For a Duo, use `--preset duo`. Use a different output
-   filename for each preparation. The first build takes
+   `--preset iphone`. For a Duo, use `--preset duo`. For another model, pass its
+   name from `python tools/odyssey.py --list-presets`, such as
+   `--preset iphone-16-pro`. Use a different output filename for each preparation. The first build takes
    longer because it prepares shaders. The last line prints the IPA's path.
    That IPA contains your game files; keep it private.
 
