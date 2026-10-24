@@ -101,7 +101,8 @@
   left at 16:9 and stretched its button guides; 4:3 pins it to the bottom edge
   and the live adapter treats it as a bottom-edge group. 4:3 builds now change
   210 archives and phone builds 211. These were measured against the original
-  layouts, not yet seen on a device.
+  layouts. The player reported the 437:201 phone build with these fixes working
+  on an iPhone 18 Pro; 4:3 and live iPad/Duo builds of them are untested on a device.
 - Map icons are positioned by the game at runtime in the map's own root units,
   which skip the map's prepared or live correction, so they drifted from their
   spots away from the cursor. The exact-build Calculate adapter now records the
@@ -109,8 +110,9 @@
   `MapPlayer` root positions (restoring the player marker's prepared scale ratio
   after the game resets it), for phone, static 4:3 and live builds. Phone builds
   install that adapter for this rule only; the live HUD stays 4:3-only.
-  Synthetic adapter tests cover both profiles; it is not yet seen on a device,
-  and the HUD minimap's icons are a separate path that is unchanged.
+  Synthetic adapter tests cover both profiles. The player reported it working
+  in that iPhone 18 Pro build; 4:3 and live builds are untested on a device, and
+  the HUD minimap's icons are a separate path that is unchanged.
 - 120 FPS is optional frame interpolation, with the simulation at 60 Hz.
   Hardware support, latency, artifacts, heat and sustained performance vary.
 - Cloud save capture failed intermittently on some phone commits. The included
