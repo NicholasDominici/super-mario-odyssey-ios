@@ -86,6 +86,18 @@ class PhoneAspectTests(unittest.TestCase):
         width = struct.unpack_from(order + 'f', after, index['PicBase'][0] + 0x4c)[0]
         self.assertAlmostEqual(width * float(phone.SCALE_X), 1280., places=4)
 
+    def test_glasses_filter_covers_the_wider_panel(self):
+        surfaces = [(pane, b'pic1', 0., 0., 1280., 1000.) for pane in ('PicCaptureUse', 'PicFilter')]
+        after = phone.patch_layout(layout(surfaces), 'FilterGlasses.bflyt', [], [])
+        order, index = phone.panes(after, 'FilterGlasses')
+        sx = struct.unpack_from(order + 'f', after, index['RootPane'][0] + 0x44)[0]
+        for pane in ('PicCaptureUse', 'PicFilter'):
+            width, height = struct.unpack_from(order + '2f', after, index[pane][0] + 0x4c)
+            self.assertAlmostEqual(width * sx, 1280., places=3)
+            self.assertEqual(height, 1000.)
+        with self.assertRaisesRegex(ValueError, 'PicFilter'):
+            phone.patch_layout(layout([surfaces[0], ('PicFilter', b'pic1', 0., 0., 1280., 720.)]), 'FilterGlasses.bflyt', [], [])
+
     def test_animation_conflict_and_format_bounds_rejected(self):
         before = layout([('All',b'pan1',-600.,296.,30.,40.)])
         with self.assertRaisesRegex(ValueError, 'animation'):

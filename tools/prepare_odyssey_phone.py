@@ -32,6 +32,10 @@ CHILD_EDGES = {'ContinueLoading': {'ParLogo': (-510.0, 270.0)},
 WIDE_BANDS = {'PlayGuide': {'PicBase': (0.0, -360.0, 1280.0, 280.0)},
               'TalkMessage': {'PicBase': (0.0, -360.0, 1280.0, 280.0)},
               'ContinueLoading': {'PicFooter': (0.0, -360.0, 1280.0, 58.0)}}
+# Screen filters drawn over the whole picture (Moe-Eye glasses). Their 1000-tall
+# surfaces already cover the panel vertically; only their width must follow it.
+SCREEN_FILTERS = {'FilterGlasses': {'PicCaptureUse': (0.0, 0.0, 1280.0, 1000.0),
+                                    'PicFilter': (0.0, 0.0, 1280.0, 1000.0)}}
 PROGRESS_ANIM_SHA = 'e24fdce215dc90b1963362ce7723ca78b2fba75a4e5a33bdb585d0106d9d9c1b'
 
 
@@ -170,11 +174,11 @@ def patch_layout(data: bytes, label: str, records: list, tracks: list, aspect: F
         static(pane, {6 if part else 8})
         write(pane, 'scale_x' if part else 'width', 0x44 if part else 0x4c,
               1.0 if part else 1280.0, (1.0 if part else 1280.0) / float(scale_x))
-    for pane, expected in WIDE_BANDS.get(name, {}).items():
+    for pane, expected in {**WIDE_BANDS.get(name, {}), **SCREEN_FILTERS.get(name, {})}.items():
         pos, tag = index[pane]
         actual = struct.unpack_from(order + '2f', data, pos + 0x2c) + struct.unpack_from(order + '2f', data, pos + 0x4c)
         if tag != b'pic1' or actual != expected or struct.unpack_from(order + '2f', data, pos + 0x44) != (1.0, 1.0):
-            raise ValueError(f'{label}: measured horizontal shade band changed')
+            raise ValueError(f'{label}: measured full-width surface {pane} changed')
         static(pane, {8})
         write(pane, 'width', 0x4c, 1280.0, 1280.0 / float(scale_x))
     records.append({'member': label, 'action': 'phone_widescreen', 'source_sha256': common.sha(data),

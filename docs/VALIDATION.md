@@ -93,6 +93,10 @@
   camera and HUD rules at that model's exact aspect, without the live path. Those
   aspects pass synthetic unit checks only; their gameplay, HUD placement and
   transitions haven't been checked on a device.
+- Phone preparations widen the Moe-Eye glasses filter (`FilterGlasses`) to the
+  full panel width; it previously stopped short of both sides. That archive now
+  differs from the accepted phone display build; the other 208 are unchanged. The
+  fix was measured against the original layout, not yet seen on a device.
 - 120 FPS is optional frame interpolation, with the simulation at 60 Hz.
   Hardware support, latency, artifacts, heat and sustained performance vary.
 - Cloud save capture failed intermittently on some phone commits. The included
