@@ -91,6 +91,13 @@ class AspectTests(unittest.TestCase):
         self.assertEqual(360.0 * 0.75 + 90.0, 360.0)
         self.assertEqual(-360.0 * 0.75 - 90.0, -360.0)
 
+    def test_map_footer_keeps_its_shape_on_the_bottom_edge(self):
+        before = with_child('ParFooter', 0.0, -360.0, 1280.0, 120.0, b'prt1')
+        after = aspect.patch_layout(before, 'MapFooter.bflyt', [])
+        self.assertEqual(struct.unpack_from('<f', after, 20 + 0x48)[0], 0.75)
+        self.assertEqual(struct.unpack_from('<f', after, 20 + 0x30)[0], -90.0)
+        self.assertEqual(after[20 + 0x54:], before[20 + 0x54:])
+
     def test_wrong_anchor_and_animated_root_are_rejected(self):
         with self.assertRaises(ValueError):
             aspect.patch_layout(with_child('All', -600, 295, 30, 40), 'CounterCoin.bflyt', [])

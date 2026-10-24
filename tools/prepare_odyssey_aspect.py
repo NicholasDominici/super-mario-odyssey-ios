@@ -19,7 +19,7 @@ import struct
 BUILD_ID = 'b424be150a8e7d78701cbe7a439d9ebf'
 MAIN_SHA256 = '47ac74a66234bc1eb717b18e01fe7c880d2dd50cf1115fd046f5e5878be5f85f'
 SCALE_Y = 0.75
-SKIP = frozenset({'FooterParts', 'MapFooter', 'MapBG', 'FadeBlack', 'FadeWhite', 'CommonBgParts'})
+SKIP = frozenset({'FooterParts', 'MapBG', 'FadeBlack', 'FadeWhite', 'CommonBgParts'})
 PANE_TAGS = frozenset({b'pan1', b'pic1', b'txt1', b'wnd1', b'bnd1', b'prt1'})
 # BFLYT coordinates are centered, with positive Y upwards. Keeping RootPane's
 # Y scale at .75 preserves shapes, but the original +/-360 screen edges then
@@ -42,6 +42,9 @@ EDGE_ANCHORS = {
     'PlayGuideMap': (-90.0, 'TxtGuide', -586.0, -316.0),
     'PlayGuideBgm': (-90.0, 'PicSh', 0.0, -324.0),
     'TalkMessage': (-90.0, 'PicBase', 0.0, -360.0),
+    # Map screen footer: its embedded FooterParts sits on the bottom edge. Left
+    # at 16:9 it stretched the button guides on every non-16:9 display.
+    'MapFooter': (-90.0, 'ParFooter', 0.0, -360.0),
 }
 # Explicit full-frame background / live-capture surfaces. Image artwork and
 # reference photographs are deliberately absent: their proportions must remain.

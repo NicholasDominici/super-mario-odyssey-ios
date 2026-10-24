@@ -36,6 +36,10 @@ WIDE_BANDS = {'PlayGuide': {'PicBase': (0.0, -360.0, 1280.0, 280.0)},
 # surfaces already cover the panel vertically; only their width must follow it.
 SCREEN_FILTERS = {'FilterGlasses': {'PicCaptureUse': (0.0, 0.0, 1280.0, 1000.0),
                                     'PicFilter': (0.0, 0.0, 1280.0, 1000.0)}}
+# The shared footer part is narrowed by each parent's root. Widen only its bars,
+# not its button guides, so every footer reaches both panel edges.
+EMBEDDED_BANDS = {'FooterParts': {'PicBaseB': (0.0, 0.0, 1280.0, 58.0),
+                                  'PicBaseT': (0.0, 58.0, 1280.0, 4.0)}}
 PROGRESS_ANIM_SHA = 'e24fdce215dc90b1963362ce7723ca78b2fba75a4e5a33bdb585d0106d9d9c1b'
 
 
@@ -97,7 +101,7 @@ def patch_layout(data: bytes, label: str, records: list, tracks: list, aspect: F
     edge_dx = 640 * (1 - float(scale_x))
     order, index = panes(data, label)
     name = Path(label).stem
-    if name in common.SKIP:
+    if name in common.SKIP and name not in EMBEDDED_BANDS:
         records.append({'member': label, 'action': 'preserve_embedded_or_fullframe',
                         'source_sha256': common.sha(data)})
         return data
@@ -117,6 +121,22 @@ def patch_layout(data: bytes, label: str, records: list, tracks: list, aspect: F
         struct.pack_into(order + 'f', output, pos + relative, after)
         changes.append({'pane': pane, 'field': field, 'offset': pos + relative,
                         'before': before, 'after': struct.unpack_from(order + 'f', output, pos + relative)[0]})
+
+    def widen(pane, expected):
+        pos, tag = index[pane]
+        actual = struct.unpack_from(order + '2f', data, pos + 0x2c) + struct.unpack_from(order + '2f', data, pos + 0x4c)
+        if tag != b'pic1' or actual != expected or struct.unpack_from(order + '2f', data, pos + 0x44) != (1.0, 1.0):
+            raise ValueError(f'{label}: measured full-width surface {pane} changed')
+        static(pane, {8})
+        write(pane, 'width', 0x4c, 1280.0, 1280.0 / float(scale_x))
+
+    if name in EMBEDDED_BANDS:
+        for pane, expected in EMBEDDED_BANDS[name].items():
+            widen(pane, expected)
+        records.append({'member': label, 'action': 'phone_embedded_bands', 'source_sha256': common.sha(data),
+                        'output_sha256': common.sha(output), 'changes': changes,
+                        'animation_tracks_checked': len(tracks)})
+        return bytes(output)
 
     root, _ = index['RootPane']
     root_scale = struct.unpack_from(order + '2f', data, root + 0x44)
@@ -175,12 +195,7 @@ def patch_layout(data: bytes, label: str, records: list, tracks: list, aspect: F
         write(pane, 'scale_x' if part else 'width', 0x44 if part else 0x4c,
               1.0 if part else 1280.0, (1.0 if part else 1280.0) / float(scale_x))
     for pane, expected in {**WIDE_BANDS.get(name, {}), **SCREEN_FILTERS.get(name, {})}.items():
-        pos, tag = index[pane]
-        actual = struct.unpack_from(order + '2f', data, pos + 0x2c) + struct.unpack_from(order + '2f', data, pos + 0x4c)
-        if tag != b'pic1' or actual != expected or struct.unpack_from(order + '2f', data, pos + 0x44) != (1.0, 1.0):
-            raise ValueError(f'{label}: measured full-width surface {pane} changed')
-        static(pane, {8})
-        write(pane, 'width', 0x4c, 1280.0, 1280.0 / float(scale_x))
+        widen(pane, expected)
     records.append({'member': label, 'action': 'phone_widescreen', 'source_sha256': common.sha(data),
                     'output_sha256': common.sha(output), 'changes': changes,
                     'animation_tracks_checked': len(tracks)})
@@ -366,7 +381,7 @@ def prepare(args) -> dict:
             target.write_bytes(after)
             archives.append({'relative_path': str(path.relative_to(args.source_romfs)), 'source': str(path),
                              'destination': str(target), 'source_sha256': common.sha(before), 'output_sha256': common.sha(after)})
-    if len(archives) != 209:
+    if len(archives) != 211:
         raise ValueError(f'unexpected changed layout archive count {len(archives)}')
     camera = prepare_camera(args.rewritten, args.output / 'patched', args.feedback_source)
     profile = prepare_profile(args.profile, args.output / 'profiles' / TITLE)

@@ -11,7 +11,8 @@ Drawable size or scale changes invalidate owned interpolation snapshots through
 `mtl_present_geometry_changed`. The worker resets model history on the next
 epoch; UIKit does not wait for GPU work or release native swapchain ownership.
 
-The camera and 209 HUD archive corrections are prepared for 4:3 or 239:110.
+The camera and HUD archive corrections are prepared for 4:3 (210 archives) or
+a phone aspect (211 archives).
 The 4:3 preparation supports the guarded live path below. The separate 239:110
 phone preparation retains its matching composition during live changes.
 
@@ -45,6 +46,12 @@ after the original bakes draw matrices and leaves animated children unchanged.
 Measured HUD edge groups avoid the active cutout/home-indicator safe area;
 backgrounds remain full bleed. Pane sizes are not temporarily changed before a
 later draw reads them. Unknown layouts delegate unchanged and are counted.
+
+The same Calculate adapter carries one map-screen rule for every preparation,
+including phone builds, where it is the only rule installed. The game writes
+map icon, route-line and player-marker root positions in the `Map` layout's root
+units, so the adapter records `Map`'s root scale around its own Calculate and
+applies it to those owners' roots, restoring them after the original bakes.
 
 Real native Mac gameplay has filled both actual Duo Simulator postures through
 one continuous fold/unfold session, with proportionate HUD and measured safe

@@ -96,8 +96,10 @@ def prepare_assets(repo: Path, extracted: Path, rewritten: Path, output: Path, p
                     archives.append({'relative_path': relative, 'source_sha256': pad.sha(before), 'output_sha256': pad.sha(after)})
             receipt = {'archives': archives, 'layouts': records, 'aspect': display.ratio}
             patched = stage / 'phone-camera'
-        if len(receipt['archives']) != 209:
-            raise ValueError('Expected exactly 209 corrected layout archives')
+        # Both correct the map footer; phones also widen the shared footer part.
+        expected = 210 if display.live else 211
+        if len(receipt['archives']) != expected:
+            raise ValueError(f'Expected exactly {expected} corrected layout archives')
         # APFS clones are copy-on-write; fall back to ordinary independent copies.
         romfs = stage / 'RomFS'
         cp = subprocess.run(['cp', '-cR', str(extracted / 'RomFS'), str(romfs)], capture_output=True)

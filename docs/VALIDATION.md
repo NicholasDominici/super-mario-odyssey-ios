@@ -94,9 +94,23 @@
   aspects pass synthetic unit checks only; their gameplay, HUD placement and
   transitions haven't been checked on a device.
 - Phone preparations widen the Moe-Eye glasses filter (`FilterGlasses`) to the
-  full panel width; it previously stopped short of both sides. That archive now
-  differs from the accepted phone display build; the other 208 are unchanged. The
-  fix was measured against the original layout, not yet seen on a device.
+  full panel width; it previously stopped short of both sides. Its 1000-unit
+  height already covers 4:3 and the live iPad/Duo range down to about 1.28:1.
+  Phone preparations also widen the shared footer bars (`FooterParts`) to both
+  edges. Every preparation now corrects the map footer (`MapFooter`), which was
+  left at 16:9 and stretched its button guides; 4:3 pins it to the bottom edge
+  and the live adapter treats it as a bottom-edge group. 4:3 builds now change
+  210 archives and phone builds 211. These were measured against the original
+  layouts, not yet seen on a device.
+- Map icons are positioned by the game at runtime in the map's own root units,
+  which skip the map's prepared or live correction, so they drifted from their
+  spots away from the cursor. The exact-build Calculate adapter now records the
+  `Map` layout's root scale and applies it to `MapIcon`, `MapIconLine` and
+  `MapPlayer` root positions (restoring the player marker's prepared scale ratio
+  after the game resets it), for phone, static 4:3 and live builds. Phone builds
+  install that adapter for this rule only; the live HUD stays 4:3-only.
+  Synthetic adapter tests cover both profiles; it is not yet seen on a device,
+  and the HUD minimap's icons are a separate path that is unchanged.
 - 120 FPS is optional frame interpolation, with the simulation at 60 Hz.
   Hardware support, latency, artifacts, heat and sustained performance vary.
 - Cloud save capture failed intermittently on some phone commits. The included
@@ -164,7 +178,8 @@ python tools/odyssey.py --extracted-dir /path/to/merged-1.4.1 \
 ```
 
 Both commands validate all three module hashes and the rewritten camera/haptic
-guards. They create and read back the 209 corrected layout archives, hash-check
+guards. They create and read back the corrected layout archives (210 for 4:3,
+211 for phone presets), hash-check
 the original sources after preparation, and write private receipts. They never
 sign or install. Optional `--rewritten` reuses an already checked local rewrite.
 
