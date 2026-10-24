@@ -57,7 +57,8 @@ it rewrites all three original NSOs. `--prepare-only` validates and prepares the
 camera/HUD without shaders, Xcode compilation, signing, or device access.
 
 The build creates a separate RomFS copy (APFS clones when available) and replaces
-only the 209 corrected layout archives in that copy. Original game files remain
+only the corrected layout archives (210 for 4:3 builds, 211 for phone builds)
+and the 15 Balloon World event/message archives in that copy. Original game files remain
 unchanged. All game-bearing outputs and local receipts stay outside the repo.
 
 ## Why a Mac build is necessary

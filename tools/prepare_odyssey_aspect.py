@@ -19,7 +19,7 @@ import struct
 BUILD_ID = 'b424be150a8e7d78701cbe7a439d9ebf'
 MAIN_SHA256 = '47ac74a66234bc1eb717b18e01fe7c880d2dd50cf1115fd046f5e5878be5f85f'
 SCALE_Y = 0.75
-SKIP = frozenset({'FooterParts', 'MapFooter', 'MapBG', 'FadeBlack', 'FadeWhite', 'CommonBgParts'})
+SKIP = frozenset({'FooterParts', 'MapBG', 'FadeBlack', 'FadeWhite', 'CommonBgParts'})
 PANE_TAGS = frozenset({b'pan1', b'pic1', b'txt1', b'wnd1', b'bnd1', b'prt1'})
 # BFLYT coordinates are centered, with positive Y upwards. Keeping RootPane's
 # Y scale at .75 preserves shapes, but the original +/-360 screen edges then
@@ -28,6 +28,9 @@ PANE_TAGS = frozenset({b'pan1', b'pic1', b'txt1', b'wnd1', b'bnd1', b'prt1'})
 # Each row carries one exact anchor coordinate measured from the supplied game.
 EDGE_ANCHORS = {
     'CounterCoin': (90.0, 'All', -600.0, 296.0),
+    # The regional coin counter is its own layout beside CounterCoin; it must
+    # follow the same top-left edge or the gap between them changes.
+    'CounterCollectCoin': (90.0, 'All', -475.0, 302.5),
     'CounterLife': (90.0, 'All', 556.0, 284.0),
     'CounterLifeKids': (90.0, 'All', 556.0, 284.0),
     'CounterLifeUp': (90.0, 'All', 556.0, 284.0),
@@ -42,6 +45,9 @@ EDGE_ANCHORS = {
     'PlayGuideMap': (-90.0, 'TxtGuide', -586.0, -316.0),
     'PlayGuideBgm': (-90.0, 'PicSh', 0.0, -324.0),
     'TalkMessage': (-90.0, 'PicBase', 0.0, -360.0),
+    # Map screen footer: its embedded FooterParts sits on the bottom edge. Left
+    # at 16:9 it stretched the button guides on every non-16:9 display.
+    'MapFooter': (-90.0, 'ParFooter', 0.0, -360.0),
 }
 # Explicit full-frame background / live-capture surfaces. Image artwork and
 # reference photographs are deliberately absent: their proportions must remain.
@@ -68,6 +74,25 @@ FULL_FRAME_PANES = {
 # These parts embed CommonBgParts, whose own root is already a full-frame
 # exception. Compensate the parent's .75 once, rather than changing the image.
 FULL_FRAME_PARTS = {'BootLoading': {'ParBG'}, 'ContinueLoading': {'ParBG'}, 'Menu': {'ParBG'}}
+# Full-screen filters drawn over the picture (Moe-Eye glasses): centered 1000-tall
+# surfaces that overscan the 720 panel. Each preparation compensates the axis its
+# root narrows (height here, width on phones), so every display keeps the authored
+# framing instead of a squashed or narrowed filter.
+SCREEN_FILTERS = {'FilterGlasses': {'PicCaptureUse': (0.0, 0.0, 1280.0, 1000.0),
+                                    'PicFilter': (0.0, 0.0, 1280.0, 1000.0)}}
+
+
+# Title/pause menu without "Playing in VR" (ParList06) and "Action Guide"
+# (ParList03), paired with the main cuts that shorten both item tables to four
+# (patch_nso.py). The removed items are hidden and the remaining ones close up:
+# Options takes the title VR slot; pause Save and Options take VR's and Help's.
+MENU_LAYOUT_SHA = '4bbad5beeb507c96547bf4ba9e9dbeb2d83930069b99218316f59590062a1daf'
+MENU_HIDDEN = ('ParList03', 'ParList06')
+MENU_LAYOUT_Y = {'ParList04': (-138.0, -50.0)}
+MENU_ANIMATIONS = {
+    'Menu_SelectTitle.bflan': ('18ff4e563fa3a930dd6b13d9af9a4ab86395a404d983be61e9e715f03ad14b2c', {'ParList05': (-192.0, -104.0)}),
+    'Menu_SelectPause.bflan': ('e5ece1fd4d04865fd335addca24bb3b3de345b51725b3e2d7bbf5b50372a7db4', {'ParList05': (-182.0, -94.0)}),
+}
 
 
 def sha(data: bytes) -> str:
@@ -273,11 +298,76 @@ def patch_layout(data: bytes, label: str, records: list[dict], tracks: list[dict
         else:
             static(name, {9})
             write_float(name, 'height', position + 0x50, 720.0, 720.0 / SCALE_Y)
+    for name, expected in SCREEN_FILTERS.get(layout_name, {}).items():
+        position, tag = pane(name)
+        actual = struct.unpack_from(order + '2f', data, position + 0x2c) + struct.unpack_from(order + '2f', data, position + 0x4c)
+        if tag != b'pic1' or actual != expected or struct.unpack_from(order + '2f', data, position + 0x44) != (1.0, 1.0):
+            raise ValueError(f'{label}: measured screen filter {name} changed')
+        if struct.unpack_from(order + '3f', data, position + 0x38) != (0.0, 0.0, 0.0) or data[position + 9] != 0:
+            raise ValueError(f'{label}: {name} has an unexpected orientation')
+        static(name, {9})
+        write_float(name, 'height', position + 0x50, expected[3], expected[3] / SCALE_Y)
     records.append({'member': label, 'action': 'scale_y', 'offset': offset,
                     'before': before, 'after': after, 'source_sha256': sha(data),
                     'output_sha256': sha(output), 'changes': changes,
                     'animation_tracks_checked': len(tracks)})
     return bytes(output)
+
+
+def _menu_layout(data: bytes, label: str, records: list[dict]) -> bytes:
+    if sha(data) != MENU_LAYOUT_SHA:
+        raise ValueError(f'{label}: menu layout differs from the verified 1.4.1 file')
+    order = endian(data)
+    header_size = struct.unpack_from(order + 'H', data, 6)[0]
+    count = struct.unpack_from(order + 'H', data, 16)[0]
+    panes, pos = {}, header_size
+    for _ in range(count):
+        tag, size = struct.unpack_from(order + '4sI', data, pos)
+        if tag in PANE_TAGS:
+            panes[data[pos + 12:pos + 36].split(b'\0', 1)[0].decode()] = pos
+        pos += size
+    output, changes = bytearray(data), []
+    for name in MENU_HIDDEN:
+        output[panes[name] + 8] &= 0xFE  # Pane flag bit 0: visible.
+        changes.append({'pane': name, 'field': 'visible', 'before': data[panes[name] + 8] & 1, 'after': 0})
+    for name, (before, after) in MENU_LAYOUT_Y.items():
+        if struct.unpack_from(order + 'f', data, panes[name] + 0x30)[0] != before:
+            raise ValueError(f'{label}: {name} moved')
+        struct.pack_into(order + 'f', output, panes[name] + 0x30, after)
+        changes.append({'pane': name, 'field': 'translation_y', 'before': before, 'after': after})
+    records.append({'member': label, 'action': 'remove_menu_items', 'source_sha256': sha(data),
+                    'output_sha256': sha(output), 'changes': changes})
+    return bytes(output)
+
+
+def _menu_animation(data: bytes, label: str, records: list[dict], expected_sha: str, moves: dict) -> bytes:
+    if sha(data) != expected_sha:
+        raise ValueError(f'{label}: menu animation differs from the verified 1.4.1 file')
+    order, output, changes = endian(data), bytearray(data), []
+    for track in animation_tracks(data, label):
+        if track['target'] in moves and (track['kind'], track['channel']) == ('FLPA', 1):
+            before, after = moves[track['target']]
+            _, _, curve, _, keys, _, key_offset = struct.unpack_from(order + '4BHHI', data, track['offset'])
+            at = track['offset'] + key_offset + 4
+            if curve != 2 or keys != 1 or struct.unpack_from(order + 'f', data, at)[0] != before:
+                raise ValueError(f'{label}: unexpected {track["target"]} key')
+            struct.pack_into(order + 'f', output, at, after)
+            changes.append({'pane': track['target'], 'channel': 1, 'before': before, 'after': after})
+    if len(changes) != len(moves):
+        raise ValueError(f'{label}: missing menu position track')
+    records.append({'member': label, 'action': 'remove_menu_items', 'source_sha256': sha(data),
+                    'output_sha256': sha(output), 'changes': changes})
+    return bytes(output)
+
+
+def patch_menu_member(name: str, body: bytes, label: str, records: list[dict]) -> bytes:
+    """Shared by every display preparation; other members are returned unchanged."""
+    base = Path(name).name
+    if base == 'Menu.bflyt':
+        return _menu_layout(body, label, records)
+    if base in MENU_ANIMATIONS:
+        return _menu_animation(body, label, records, *MENU_ANIMATIONS[base])
+    return body
 
 
 def patch_sarc(data: bytes, label: str, records: list[dict], depth: int = 0) -> bytes:
@@ -335,6 +425,7 @@ def patch_sarc(data: bytes, label: str, records: list[dict], depth: int = 0) -> 
         ranges.append((lo, hi))
         body = data[lo:hi]
         child = label + '/' + name
+        body = patch_menu_member(name, body, child, records)
         if name.endswith('.bflyt'):
             body = patch_layout(body, child, records, tracks)
         elif body[:4] == b'SARC':

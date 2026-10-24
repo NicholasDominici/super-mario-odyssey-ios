@@ -7,7 +7,9 @@ import shutil
 import subprocess
 import tempfile
 
+from odyssey_displays import resolve
 import prepare_odyssey_aspect as pad
+import prepare_odyssey_balloon as balloon
 import prepare_odyssey_phone as phone
 
 TITLE = '0100000000010000'
@@ -17,7 +19,7 @@ MODULES = {
     'sdk': '754cf4b581d749fbe3d457cf66497b141ef994cf592d247919d64a37dcc30d27',
 }
 REWRITTEN = {
-    'main': '05214155b3568c8c7e3081f61c0f2e8ff55002e75d0b74e1dde5e62dc06b492f',
+    'main': '1ca4daaffc598ed3859fb6c6183ed07be8a7836cff86733f3122bc7005f013ee',
     'subsdk0': 'bc8cdf523557dce3789f2ba890998bf825e7ff102ea91fb1fd76d0f0f7c5db43',
     'sdk': 'f1f137f007d11574416e0262f42029ea31fc8656c44b56883a6abb08eae68875',
 }
@@ -44,8 +46,7 @@ def verify_extraction(extracted: Path) -> None:
 
 def prepare_assets(repo: Path, extracted: Path, rewritten: Path, output: Path, preset: str) -> dict:
     """Build and verify a separate camera/HUD/RomFS tree for one display preset."""
-    if preset not in ('ipad', 'duo', 'iphone'):
-        raise ValueError('preset must be ipad, duo or iphone')
+    display = resolve(preset)
     extracted = outside_repo(extracted, repo)
     rewritten = outside_repo(rewritten, repo)
     output = outside_repo(output, repo)
@@ -67,9 +68,11 @@ def prepare_assets(repo: Path, extracted: Path, rewritten: Path, output: Path, p
     try:
         (stage / '.odyssey-display-output').touch()
         overlay = stage / 'overlay'
-        # The camera helper also verifies every accepted takeoff observer guard.
-        camera = phone.prepare_camera(rewritten, stage / 'phone-camera', repo / 'dm/host/hle_odyssey_feedback.c')
-        if preset in ('ipad', 'duo'):
+        # The camera helper also verifies every accepted takeoff observer guard;
+        # live 4:3 builds keep the rewritten module and use its copy only for that.
+        camera = phone.prepare_camera(rewritten, stage / 'phone-camera', repo / 'dm/host/hle_odyssey_feedback.c',
+                                      phone.ASPECT if display.live else display.aspect)
+        if display.live:
             receipt = pad.create_overlay(extracted / 'RomFS', overlay, extracted / 'ExeFS/main', stage / 'layout.json')
             patched = rewritten
         else:
@@ -82,7 +85,7 @@ def prepare_assets(repo: Path, extracted: Path, rewritten: Path, output: Path, p
                     if unpacked[:4] != b'SARC':
                         continue
                     relative = str(path.relative_to(extracted / 'RomFS'))
-                    changed = phone.patch_archive(unpacked, relative, records)
+                    changed = phone.patch_archive(unpacked, relative, records, aspect=display.aspect)
                     if changed == unpacked:
                         continue
                     after = pad.yaz0_literal(changed, before[:16]) if before[:4] == b'Yaz0' else changed
@@ -92,10 +95,16 @@ def prepare_assets(repo: Path, extracted: Path, rewritten: Path, output: Path, p
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(after)
                     archives.append({'relative_path': relative, 'source_sha256': pad.sha(before), 'output_sha256': pad.sha(after)})
-            receipt = {'archives': archives, 'layouts': records, 'aspect': '239:110'}
+            receipt = {'archives': archives, 'layouts': records, 'aspect': display.ratio}
             patched = stage / 'phone-camera'
-        if len(receipt['archives']) != 209:
-            raise ValueError('Expected exactly 209 corrected layout archives')
+        # Both correct the map footer; phones also widen the shared footer part.
+        expected = 210 if display.live else 211
+        if len(receipt['archives']) != expected:
+            raise ValueError(f'Expected exactly {expected} corrected layout archives')
+        # Every preset: Luigi says Balloon World (online only) is unsupported.
+        unsupported = balloon.prepare(extracted / 'RomFS', overlay)
+        if {a['relative_path'] for a in unsupported} & {a['relative_path'] for a in receipt['archives']}:
+            raise ValueError('Balloon World archives overlap the corrected layout archives')
         # APFS clones are copy-on-write; fall back to ordinary independent copies.
         romfs = stage / 'RomFS'
         cp = subprocess.run(['cp', '-cR', str(extracted / 'RomFS'), str(romfs)], capture_output=True)
@@ -103,16 +112,17 @@ def prepare_assets(repo: Path, extracted: Path, rewritten: Path, output: Path, p
             if romfs.exists():
                 shutil.rmtree(romfs)
             shutil.copytree(extracted / 'RomFS', romfs)
-        for archive in receipt['archives']:
+        for archive in receipt['archives'] + unsupported:
             relative = archive['relative_path']
             original = extracted / 'RomFS' / relative
             target = romfs / relative
             shutil.copy2(overlay / relative, target)
             if pad.sha(original.read_bytes()) != archive['source_sha256'] or pad.sha(target.read_bytes()) != archive['output_sha256']:
                 raise ValueError(f'Source/output integrity mismatch: {relative}')
-        record = {'preset': preset, 'aspect': '4:3' if preset in ('ipad', 'duo') else '239:110',
+        record = {'preset': display.preset, 'model': display.model, 'aspect': display.ratio, 'live_display': display.live,
                   'main_build_id': pad.BUILD_ID, 'modules_sha256': MODULES,
-                  'camera': camera, 'layouts': receipt, 'patched': str(patched), 'romfs': str(romfs)}
+                  'camera': camera, 'layouts': receipt, 'balloon_world_unsupported': unsupported,
+                  'patched': str(patched), 'romfs': str(romfs)}
         # Replace staging prefixes only in our local receipt; original paths stay intact.
         record = json.loads(json.dumps(record).replace(str(stage), str(output)))
         (stage / 'receipt.json').write_text(json.dumps(record, indent=2) + '\n')

@@ -64,7 +64,7 @@ class PhoneAspectTests(unittest.TestCase):
 
 
     def test_hud_anchor_shape_and_animated_child_preserved(self):
-        for name, x, y in [('CounterCoin', -600., 296.), ('CounterLife', 556., 284.)]:
+        for name, x, y in [('CounterCoin', -600., 296.), ('CounterCollectCoin', -475., 302.5), ('CounterLife', 556., 284.)]:
             before = layout([('All', b'pan1', x, y, 30., 40.)])
             records = []
             after = phone.patch_layout(before, name+'.bflyt', records, [])
@@ -85,6 +85,34 @@ class PhoneAspectTests(unittest.TestCase):
         order, index = phone.panes(after, 'TalkMessageOver')
         width = struct.unpack_from(order + 'f', after, index['PicBase'][0] + 0x4c)[0]
         self.assertAlmostEqual(width * float(phone.SCALE_X), 1280., places=4)
+
+    def test_glasses_filter_covers_the_wider_panel(self):
+        surfaces = [(pane, b'pic1', 0., 0., 1280., 1000.) for pane in ('PicCaptureUse', 'PicFilter')]
+        after = phone.patch_layout(layout(surfaces), 'FilterGlasses.bflyt', [], [])
+        order, index = phone.panes(after, 'FilterGlasses')
+        sx = struct.unpack_from(order + 'f', after, index['RootPane'][0] + 0x44)[0]
+        for pane in ('PicCaptureUse', 'PicFilter'):
+            width, height = struct.unpack_from(order + '2f', after, index[pane][0] + 0x4c)
+            self.assertAlmostEqual(width * sx, 1280., places=3)
+            self.assertEqual(height, 1000.)
+        with self.assertRaisesRegex(ValueError, 'PicFilter'):
+            phone.patch_layout(layout([surfaces[0], ('PicFilter', b'pic1', 0., 0., 1280., 720.)]), 'FilterGlasses.bflyt', [], [])
+
+    def test_footer_bars_reach_both_edges_and_map_footer_keeps_its_shape(self):
+        bars = [('PicBaseB', b'pic1', 0., 0., 1280., 58.), ('PicBaseT', b'pic1', 0., 58., 1280., 4.),
+                ('TxtDevice', b'txt1', -576., 27., 300., 50.)]
+        before = layout(bars)
+        after = phone.patch_layout(before, 'FooterParts.bflyt', [], [])
+        order, index = phone.panes(after, 'FooterParts')
+        self.assertEqual(after[20:20 + 0x54], before[20:20 + 0x54])  # the parent narrows the part
+        for pane in ('PicBaseB', 'PicBaseT'):
+            width = struct.unpack_from(order + 'f', after, index[pane][0] + 0x4c)[0]
+            self.assertAlmostEqual(width * float(phone.SCALE_X), 1280., places=3)
+        guide = index['TxtDevice'][0]
+        self.assertEqual(after[guide:guide + 0x54], before[guide:guide + 0x54])
+        footer = phone.patch_layout(layout([('ParFooter', b'prt1', 0., -360., 1280., 120.)]), 'MapFooter.bflyt', [], [])
+        self.assertAlmostEqual(struct.unpack_from('<f', footer, 20 + 0x44)[0], float(phone.SCALE_X), places=6)
+        self.assertEqual(phone.patch_layout(layout(), 'MapBG.bflyt', [], []), layout())
 
     def test_animation_conflict_and_format_bounds_rejected(self):
         before = layout([('All',b'pan1',-600.,296.,30.,40.)])

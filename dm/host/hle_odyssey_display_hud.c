@@ -1,6 +1,7 @@
 // Odyssey 1.4.1 live HUD transforms, paired with the guarded camera adapter.
 // Only primary al::EuiScreen layouts from the prepared 4:3 profile participate.
 // Local edits exist only during Calculate; the original bakes the draw matrices.
+// The map-screen rule below also runs for prepared wide (phone) profiles.
 #include "dm.h"
 #include "odyssey_display.h"
 #include "odyssey_display_hud.h"
@@ -16,6 +17,7 @@ static pthread_mutex_t hud_stats_lock = PTHREAD_MUTEX_INITIALIZER;
 static dm_odyssey_display_hud_stats hud_stats;
 static char hud_seen[32][64];
 static unsigned hud_seen_count;
+static int hud_phone; // Prepared wide profile: map-screen rule only, never the live HUD.
 
 // These guards pin the receiving ABI, owner chain, tree/field access, matrix
 // calculation and later picture draw. Another game/SDK must derive its own.
@@ -126,19 +128,19 @@ static int hud_in_names(const char *name, const char *const *names, size_t count
     return 0;
 }
 static int hud_skip_owner(const char *owner) {
-    static const char *const names[] = {"FooterParts", "MapFooter", "MapBG", "FadeBlack", "FadeWhite", "CommonBgParts"};
+    static const char *const names[] = {"FooterParts", "MapBG", "FadeBlack", "FadeWhite", "CommonBgParts"};
     return hud_in_names(owner, names, sizeof names / sizeof *names);
 }
 typedef struct { const char *owner, *anchor; float x, y; int sign; } hud_edge;
 static const hud_edge hud_edges[] = {
-    {"CounterCoin","All",-600,296,1}, {"CounterLife","All",556,284,1},
+    {"CounterCoin","All",-600,296,1}, {"CounterCollectCoin","All",-475,302.5f,1}, {"CounterLife","All",556,284,1},
     {"CounterLifeKids","All",556,284,1}, {"CounterLifeUp","All",556,284,1},
     {"CounterShine","All",-596,266,1}, {"MapMini","All",556,157,1},
     {"PlayGuideMenu","PicCaptureUse",556,220,1}, {"PlayGuideCamera","All",546,94,1},
     {"PlayGuideSkip","PicCaptureUse",382,312,1}, {"SaveMessage","All",-600,-320,-1},
     {"KidsMode","All",598,-334,-1}, {"PlayGuide","PicBase",0,-360,-1},
     {"PlayGuideMap","TxtGuide",-586,-316,-1}, {"PlayGuideBgm","PicSh",0,-324,-1},
-    {"TalkMessage","PicBase",0,-360,-1},
+    {"TalkMessage","PicBase",0,-360,-1}, {"MapFooter","ParFooter",0,-360,-1},
 };
 typedef struct { const char *owner, *pane; int part; } hud_fill;
 static const hud_fill hud_fills[] = {
@@ -157,6 +159,10 @@ static const hud_fill hud_fills[] = {
 #undef HUD_OPTION
     {"BootLoading","ParBG",1}, {"ContinueLoading","ParBG",1}, {"Menu","ParBG",1},
 };
+// Full-screen filters (Moe-Eye glasses): the 4:3 preparation sets their 1000-tall
+// surfaces to 1000/.75 so they keep the authored framing; keep that at any aspect.
+typedef struct { const char *owner, *pane; } hud_filter;
+static const hud_filter hud_filters[] = {{"FilterGlasses","PicCaptureUse"}, {"FilterGlasses","PicFilter"}};
 
 enum { HUD_PANES = 512, HUD_EDITS = 16 };
 typedef struct { uint8_t *pane; size_t offset; float before, after; } hud_edit;
@@ -261,6 +267,16 @@ static int hud_plan_make(void *layout, const dm_odyssey_display_layout *geometry
             hud_float(pane, 0x4c) <= 0 || hud_float(pane, 0x4c) > 8 ||
             !hud_add(plan, pane, 0x4c, hud_float(pane, 0x4c) * .75f / plan->target_y)) return 0;
     }
+    for (unsigned i = 0; i < sizeof hud_filters / sizeof *hud_filters; i++) {
+        const hud_filter *filter = &hud_filters[i];
+        if (strcmp(plan->owner, filter->owner)) continue;
+        uint8_t *pane = hud_find(plan, filter->pane);
+        if (!pane || hud_float(pane, 0x30) != 0 || hud_float(pane, 0x34) != 0 ||
+            hud_float(pane, 0x3c) != 0 || hud_float(pane, 0x40) != 0 || hud_float(pane, 0x44) != 0 ||
+            hud_float(pane, 0x50) != 1280 || hud_float(pane, 0x54) != 1000.0f / .75f ||
+            hud_float(pane, 0x4c) <= 0 || hud_float(pane, 0x4c) > 8 ||
+            !hud_add(plan, pane, 0x4c, hud_float(pane, 0x4c) * .75f / plan->target_y)) return 0;
+    }
     return 1;
 }
 static void hud_apply(const hud_plan *plan, int restore) {
@@ -292,23 +308,159 @@ static void hud_record(int result, const hud_plan *plan, double aspect) {
     else ++hud_stats.declined;
     pthread_mutex_unlock(&hud_stats_lock);
 }
+// Full map screen (every owner below is constructed only by main+0x1ce2f0): the
+// game writes each icon layout's root translation, and the player marker's
+// uniform scale, in Map root units. Those skip Map's own prepared or live root
+// correction, so icons drift from their spots away from the cursor. Map's root
+// scale is recorded around its own Calculate and applied to the icon roots.
+static pthread_mutex_t hud_map_lock = PTHREAD_MUTEX_INITIALIZER;
+static struct { int valid; float base_x, base_y, live_x, live_y; } hud_map_root;
+static int hud_map_icon_owner(const char *owner) {
+    static const char *const names[] = {"MapIcon", "MapIconLine", "MapPlayer"};
+    return hud_in_names(owner, names, sizeof names / sizeof *names);
+}
+static int hud_map_scale_valid(float x, float y) { return x >= .25f && x <= 1 && y >= .25f && y <= 1; }
+// Small on purpose: Calculate runs on the guest thread's stack beside a live plan.
+typedef struct { hud_edit edits[4]; unsigned edit_count; char owner[64]; } hud_map_edits;
+static int hud_map_add(hud_map_edits *plan, uint8_t *pane, size_t offset, float replacement) {
+    if (plan->edit_count == 4 || !isfinite(replacement) || fabsf(replacement) > 100000) return 0;
+    plan->edits[plan->edit_count++] = (hud_edit){pane, offset, hud_float(pane, offset), replacement};
+    return 1;
+}
+static void hud_map_apply(const hud_map_edits *plan, int restore) {
+    for (unsigned i = 0; i < plan->edit_count; i++) {
+        const hud_edit *edit = &plan->edits[i];
+        float value = restore ? edit->before : edit->after;
+        memcpy(edit->pane + edit->offset, &value, sizeof value);
+        edit->pane[0x58] |= 0x10;
+    }
+}
+// 1: icon edits planned; 2: this is Map, *map_root receives its root; 0: no rule.
+static int hud_map_plan(void *layout, hud_map_edits *plan, uint8_t **map_root) {
+    if (!hud_aligned(layout) || hud_pointer(layout, 0) != hud_layout_vptr) return 0;
+    uint8_t *screen = (uint8_t *)hud_pointer(layout, 0x88);
+    if (!hud_aligned(screen) || hud_pointer(screen, 0) != hud_screen_vptr ||
+        hud_pointer(screen, 0x30) != (uintptr_t)layout ||
+        !hud_owner_name((const char *)hud_pointer(screen, 0xb8), plan->owner)) return 0;
+    int map = !strcmp(plan->owner, "Map");
+    if (!map && !hud_map_icon_owner(plan->owner)) return 0;
+    uint8_t *root = (uint8_t *)hud_pointer(layout, 0x18);
+    if (!hud_pane_valid(root) || hud_pointer(root, 0x18) || !hud_name(root, "RootPane") ||
+        (hud_pointer(root, 0) != hud_pane_vptr && hud_pointer(root, 0) != hud_root_vptr) ||
+        hud_float(root, 0x50) != 1280 || hud_float(root, 0x54) != 720 ||
+        hud_float(root, 0x3c) != 0 || hud_float(root, 0x40) != 0 || hud_float(root, 0x44) != 0 ||
+        hud_float(root, 0x48) < .01f || hud_float(root, 0x48) > 8 ||
+        hud_float(root, 0x4c) < .01f || hud_float(root, 0x4c) > 8) return 0;
+    if (map) {
+        // Map's own root is never translated; zoom and pan live on its All pane.
+        if (hud_float(root, 0x30) != 0 || hud_float(root, 0x34) != 0 ||
+            !hud_map_scale_valid(hud_float(root, 0x48), hud_float(root, 0x4c))) return 0;
+        *map_root = root; return 2;
+    }
+    pthread_mutex_lock(&hud_map_lock);
+    __typeof__(hud_map_root) m = hud_map_root;
+    pthread_mutex_unlock(&hud_map_lock);
+    if (!m.valid) return 0;
+    float sx = hud_float(root, 0x48), sy = hud_float(root, 0x4c);
+    if (!hud_map_add(plan, root, 0x30, hud_float(root, 0x30) * m.live_x) ||
+        !hud_map_add(plan, root, 0x34, hud_float(root, 0x34) * m.live_y)) return 0;
+    // A uniform root scale means the game reset it (al::setLocalScale); restore
+    // the prepared ratio. A live plan then rescales Y on top, as for any layout.
+    if (sx == sy && m.base_x != m.base_y &&
+        (!hud_map_add(plan, root, 0x48, sx * m.base_x) || !hud_map_add(plan, root, 0x4c, sy * m.base_y))) return 0;
+    return 1;
+}
+static void hud_map_record(int result, const uint8_t *map_root, float base_x, float base_y) {
+    pthread_mutex_lock(&hud_map_lock);
+    if (map_root) {
+        float live_x = hud_float(map_root, 0x48), live_y = hud_float(map_root, 0x4c);
+        int valid = hud_map_scale_valid(base_x, base_y) && hud_map_scale_valid(live_x, live_y);
+        hud_map_root.valid = valid;
+        if (valid) {
+            hud_map_root.base_x = base_x; hud_map_root.base_y = base_y;
+            hud_map_root.live_x = live_x; hud_map_root.live_y = live_y;
+        }
+    }
+    pthread_mutex_unlock(&hud_map_lock);
+    pthread_mutex_lock(&hud_stats_lock);
+    if (result == 1) ++hud_stats.map_icons; else if (result == 2) ++hud_stats.map_roots;
+    pthread_mutex_unlock(&hud_stats_lock);
+}
+// Menu cursors: a ParCursor pane directly under an identity All pane holds the
+// selected item's on-screen position. Every writer reads it with calcPaneTrans
+// (main+0x630b60 / 0x630be0) and stores it unchanged (main+0x630d50 / 0x630a30),
+// which is only a local position under an identity root. A prepared or live
+// root would transform it again and set the cap over the item. Convert it into
+// root-local units for Calculate, after any live root edit.
+static uint8_t *hud_child(uint8_t *parent, const char *name) {
+    uintptr_t sentinel = (uintptr_t)parent + 0x20, node = hud_pointer(parent, 0x28);
+    uint8_t *found = NULL;
+    for (unsigned i = 0; node != sentinel; i++) {
+        if (i == HUD_PANES || node < 8 || (node & 7)) return NULL;
+        uint8_t *child = (uint8_t *)(node - 8);
+        if (!hud_pane_valid(child) || hud_pointer(child, 0x18) != (uintptr_t)parent) return NULL;
+        if (hud_name(child, name)) {
+            if (found) return NULL; // Ambiguous: leave the layout alone.
+            found = child;
+        }
+        node = hud_pointer(child, 0x10);
+    }
+    return found;
+}
+static int hud_cursor_plan(void *layout, hud_map_edits *plan) {
+    if (!hud_aligned(layout) || hud_pointer(layout, 0) != hud_layout_vptr) return 0;
+    uint8_t *screen = (uint8_t *)hud_pointer(layout, 0x88);
+    if (!hud_aligned(screen) || hud_pointer(screen, 0) != hud_screen_vptr ||
+        hud_pointer(screen, 0x30) != (uintptr_t)layout ||
+        !hud_owner_name((const char *)hud_pointer(screen, 0xb8), plan->owner)) return 0;
+    uint8_t *root = (uint8_t *)hud_pointer(layout, 0x18);
+    if (!hud_pane_valid(root) || hud_pointer(root, 0x18) || !hud_name(root, "RootPane") ||
+        (hud_pointer(root, 0) != hud_pane_vptr && hud_pointer(root, 0) != hud_root_vptr) ||
+        hud_float(root, 0x3c) != 0 || hud_float(root, 0x40) != 0 || hud_float(root, 0x44) != 0) return 0;
+    float sx = hud_float(root, 0x48), sy = hud_float(root, 0x4c), tx = hud_float(root, 0x30), ty = hud_float(root, 0x34);
+    if (sx < .25f || sx > 8 || sy < .25f || sy > 8 || (sx == 1 && sy == 1 && tx == 0 && ty == 0)) return 0;
+    uint8_t *all = hud_child(root, "All");
+    if (!all || hud_float(all, 0x30) != 0 || hud_float(all, 0x34) != 0 || hud_float(all, 0x3c) != 0 ||
+        hud_float(all, 0x40) != 0 || hud_float(all, 0x44) != 0 || hud_float(all, 0x48) != 1 || hud_float(all, 0x4c) != 1) return 0;
+    uint8_t *cursor = hud_child(all, "ParCursor");
+    return cursor && hud_map_add(plan, cursor, 0x30, (hud_float(cursor, 0x30) - tx) / sx) &&
+        hud_map_add(plan, cursor, 0x34, (hud_float(cursor, 0x34) - ty) / sy);
+}
 static void hud_calculate(void *layout, void *draw_info, int recursive) {
     pthread_mutex_lock(&hud_stats_lock); ++hud_stats.calls; pthread_mutex_unlock(&hud_stats_lock);
-    if (hud_depth || !dm_odyssey_display_enabled()) {
-        pthread_mutex_lock(&hud_stats_lock);
-        if (hud_depth) ++hud_stats.nested; else ++hud_stats.disabled;
-        pthread_mutex_unlock(&hud_stats_lock);
+    if (hud_depth) {
+        pthread_mutex_lock(&hud_stats_lock); ++hud_stats.nested; pthread_mutex_unlock(&hud_stats_lock);
         hud_original(layout, draw_info, recursive); return;
     }
     ++hud_depth;
+    // Map edits nest outside the live plan: applied first, restored last.
+    hud_map_edits map = {0};
+    uint8_t *map_root = NULL;
+    int mapped = hud_map_plan(layout, &map, &map_root);
+    float map_base_x = map_root ? hud_float(map_root, 0x48) : 0, map_base_y = map_root ? hud_float(map_root, 0x4c) : 0;
+    if (mapped == 1) hud_map_apply(&map, 0);
     hud_plan plan = {0};
-    dm_odyssey_display_layout geometry;
-    dm_odyssey_display_layout_snapshot(&geometry); // One latch for camera aspect and all four insets.
-    int result = hud_plan_make(layout, &geometry, &plan);
-    if (result == 1) hud_apply(&plan, 0);
-    hud_record(result, &plan, geometry.aspect);
+    int result = 0;
+    if (!hud_phone && dm_odyssey_display_enabled()) {
+        dm_odyssey_display_layout geometry;
+        dm_odyssey_display_layout_snapshot(&geometry); // One latch for camera aspect and all four insets.
+        result = hud_plan_make(layout, &geometry, &plan);
+        if (result == 1) hud_apply(&plan, 0);
+        hud_record(result, &plan, geometry.aspect);
+    } else {
+        pthread_mutex_lock(&hud_stats_lock); ++hud_stats.disabled; pthread_mutex_unlock(&hud_stats_lock);
+    }
+    if (mapped) hud_map_record(mapped, map_root, map_base_x, map_base_y);
+    hud_map_edits cursor = {0};
+    int cursored = hud_cursor_plan(layout, &cursor);
+    if (cursored) {
+        hud_map_apply(&cursor, 0);
+        pthread_mutex_lock(&hud_stats_lock); ++hud_stats.menu_cursors; pthread_mutex_unlock(&hud_stats_lock);
+    }
     hud_original(layout, draw_info, recursive);
+    if (cursored) hud_map_apply(&cursor, 1);
     if (result == 1) hud_apply(&plan, 1);
+    if (mapped == 1) hud_map_apply(&map, 1);
     --hud_depth;
 }
 void dm_odyssey_display_hud_snapshot(dm_odyssey_display_hud_stats *out) {
@@ -346,11 +498,14 @@ static int hud_guard(const module_t *m) {
 }
 void dm_odyssey_display_hud_install(void) {
     const char *option = getenv("DM_ODYSSEY_DYNAMIC_DISPLAY");
-    if ((option && strcmp(option, "1")) || fabs(DM_GAME_DISPLAY_ASPECT - 4.0 / 3.0) > .00001 || hud_original) return;
+    // Prepared 4:3 installs the live HUD and the map rule; a prepared phone
+    // profile (wider than 16:9) installs only the map rule.
+    int phone = DM_GAME_DISPLAY_ASPECT > 16.0 / 9.0 + .00001;
+    if ((option && strcmp(option, "1")) || (!phone && fabs(DM_GAME_DISPLAY_ASPECT - 4.0 / 3.0) > .00001) || hud_original) return;
     module_t *m = NULL;
     for (int i = 0; i < g_nmod; i++) if (!strcmp(g_mod[i].name, "main")) { m = &g_mod[i]; break; }
     if (!m || strcmp(m->build_id, "b424be150a8e7d78701cbe7a439d9ebf") || !hud_guard(m)) {
-        LOG("[RED] Odyssey display HUD: exact prepared4:3 ABI/owner guard failed; proportional composition retained");
+        LOG("[RED] Odyssey display HUD: exact prepared ABI/owner guard failed; proportional composition retained");
         return;
     }
     hud_layout_vptr = (uintptr_t)(m->base + 0x135d2c8);
@@ -361,7 +516,12 @@ void dm_odyssey_display_hud_install(void) {
     hud_parts_ex_vptr = (uintptr_t)(m->base + 0x135d1c8);
     hud_original = (hud_calculate_fn)(m->base + 0xa19b00);
     *(hud_calculate_fn *)(m->base + 0x135d358) = hud_calculate;
+    hud_phone = phone;
     pthread_mutex_lock(&hud_stats_lock); hud_stats.installed = 1; pthread_mutex_unlock(&hud_stats_lock);
+    if (phone) {
+        LOG("Odyssey display HUD: exact1.4.1 LayoutEx adapter installed; prepared phone map-screen rule only");
+        return;
+    }
     dm_odyssey_display_hud_ready();
     LOG("Odyssey display HUD: exact1.4.1 LayoutEx primary owner adapter installed; narrow aspects only");
 }

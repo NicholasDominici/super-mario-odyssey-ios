@@ -13,6 +13,7 @@ import subprocess
 import sys
 
 from odyssey_assets import TITLE, outside_repo, prepare_assets, verify_extraction
+import odyssey_displays
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -26,9 +27,7 @@ def make_profile(work: Path, preset: str, cloud: str, framegen: bool) -> Path:
         if path.name != 'game.tsv' and not (target / path.name).exists():
             (target / path.name).symlink_to(path.resolve())
     text = (source / 'game.tsv').read_text()
-    if preset not in ('ipad', 'duo', 'iphone'):
-        raise ValueError('preset must be ipad, duo or iphone')
-    aspect = '4:3' if preset in ('ipad', 'duo') else '239:110'
+    aspect = odyssey_displays.resolve(preset).ratio
     text = re.sub(r'^display_aspect\t.*$', f'display_aspect\t{aspect}', text, flags=re.M)
     text = re.sub(r'^frame_generation\t.*$', 'frame_generation\t' + ('2x' if framegen else 'off'), text, flags=re.M)
     text = re.sub(r'^cloud_container\t.*\n?', '', text, flags=re.M)
@@ -58,13 +57,29 @@ def check_tools() -> None:
         raise ValueError('This fork is built with Xcode 27 or newer. Select it with xcode-select.')
 
 
+def preset_name(value: str) -> str:
+    try:
+        return odyssey_displays.resolve(value).preset
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
+
+
+class ListPresets(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        print(odyssey_displays.listing())
+        parser.exit()
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--list-presets', nargs=0, action=ListPresets, help='print every display preset and iPhone/iPad model, then exit')
     inputs = parser.add_mutually_exclusive_group(required=True)
     inputs.add_argument('--nsp-dir', type=Path, help='folder with base-game NSP or XCI and update 1.4.1 NSP')
     inputs.add_argument('--extracted-dir', type=Path, help='already merged 1.4.1 folder containing ExeFS and RomFS')
     parser.add_argument('--keys', type=Path, help='your prod.keys; required with --nsp-dir')
-    parser.add_argument('--preset', choices=('ipad', 'duo', 'iphone'), default='ipad', help='ipad/duo=4:3 preparation with live narrow display; iphone=239:110 (17 Pro Max)')
+    parser.add_argument('--preset', type=preset_name, default='ipad',
+                        help='ipad/duo=4:3 preparation with live narrow display; iphone=239:110 (17 Pro Max); '
+                             'or an iPhone/iPad model such as iphone-16-pro (see --list-presets)')
     parser.add_argument('--bundle-id', default='org.nxnative.odyssey', help='keep the same ID when updating to preserve saves')
     parser.add_argument('--cloud-container', default='', help='opt into your own CloudKit container; see docs/ICLOUD.md')
     parser.add_argument('--frame-generation', choices=('on', 'off'), default='on')
