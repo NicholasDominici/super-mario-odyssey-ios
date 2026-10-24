@@ -109,35 +109,38 @@
   `CounterCoin`. It now follows the same top-left edge anchor in every
   preparation and in the live adapter; before, the gap between the two counters
   widened on phones (and grew vertically on 4:3). Measured against the original
-  layouts; not yet seen on a device.
+  layouts. The player reported it working in an iPhone 18 Pro (437:201) build; 4:3 and live builds are untested on a device.
 - Balloon World is unsupported (it needs Nintendo's online service). Every
   preparation routes Luigi's standby event flow (`EventData/BalloonGame.szs`,
   `NpcStandby.byml`) so each talk shows one A-advanced message and ends, and no
   flow entry can reach `StartConnect`. The message replaces the otherwise
   2P-only `TimeBalloon_Separate` text in all 14 languages' `SystemMessage.szs`,
   in English, keeping Luigi's voice tag. Synthetic tests and a read-back of the
-  prepared files cover it; not yet seen on a device.
+  prepared files cover it. The player reported it working in an iPhone 18 Pro (437:201) build; 4:3 and live builds are untested on a device.
 - Menu cursors (the cap beside the selected item) are written by the game as
   the item's on-screen position into a `ParCursor` pane under an identity
   `All` pane. The Calculate adapter converts that into the corrected root's
   units in every preparation and live state, so the cap sits beside the item
   instead of over it. Synthetic adapter tests cover phone, static 4:3 and live
-  roots; not yet seen on a device.
+  roots. The player reported it working in an iPhone 18 Pro (437:201) build; 4:3 and live builds are untested on a device.
 - Phone preparations move `BootLoading`'s logo with `Menu`'s. The two layouts
   overlap on the title screen, so only one moved logo showed a second copy.
+  The player reported it working in an iPhone 18 Pro (437:201) build.
 - The title and pause menus drop Playing in VR and Action Guide. Ten guarded
   main cuts shorten both item tables to four and remove the 2P checks that
   addressed the VR slot; the `Menu` layout hides those two items and closes up
   the rest (hash-pinned source files). The pinned rewritten `main` hash changed
   accordingly, so an older `--rewritten` folder is rejected; omit the option to
-  regenerate. Synthetic and cut-table tests cover it; not yet seen on a device.
+  regenerate. Synthetic and cut-table tests cover it. The player reported it working in an iPhone 18 Pro (437:201) build; 4:3 and live
+  builds are untested on a device.
 - Map icons are positioned by the game at runtime in the map's own root units,
   which skip the map's prepared or live correction, so they drifted from their
   spots away from the cursor. The exact-build Calculate adapter now records the
   `Map` layout's root scale and applies it to `MapIcon`, `MapIconLine` and
   `MapPlayer` root positions (restoring the player marker's prepared scale ratio
   after the game resets it), for phone, static 4:3 and live builds. Phone builds
-  install that adapter for this rule only; the live HUD stays 4:3-only.
+  install that adapter for the map and menu-cursor rules only; the live HUD
+  stays 4:3-only.
   Synthetic adapter tests cover both profiles. The player reported it working
   in that iPhone 18 Pro build; 4:3 and live builds are untested on a device, and
   the HUD minimap's icons are a separate path that is unchanged.
