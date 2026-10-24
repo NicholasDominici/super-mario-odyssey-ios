@@ -19,7 +19,8 @@ progress only before the game starts. A local committed snapshot is kept first.
      --output /path/to/Odyssey-ipad-cloud-unsigned.ipa
    ```
 
-   Use `--preset iphone` and a different output path for the other device.
+   Use `--preset iphone`, or the other device's model from
+   `python tools/odyssey.py --list-presets`, and a different output path for it.
 4. Sign with tools/sign_install.py. Its development profile must include that
    exact container, CloudKit service, Development environment, memory capability,
    and the target device. An existing profile can be passed with `--profile`.

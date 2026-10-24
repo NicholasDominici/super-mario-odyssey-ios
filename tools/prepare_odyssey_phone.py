@@ -80,8 +80,17 @@ def panes(data: bytes, label: str) -> tuple[str, dict[str, tuple[int, bytes]]]:
     return order, result
 
 
-def patch_layout(data: bytes, label: str, records: list, tracks: list) -> bytes:
+def wide_scale(aspect: Fraction) -> Fraction:
+    """RootPane X multiplier that keeps 16:9 HUD shapes on a wider display."""
+    if not aspect > Fraction(16, 9):
+        raise ValueError(f'{aspect} is not wider than 16:9')
+    return Fraction(16, 9) / aspect
+
+
+def patch_layout(data: bytes, label: str, records: list, tracks: list, aspect: Fraction = ASPECT) -> bytes:
     """Apply the evidenced wide-aspect rule with static edge and mask fixes."""
+    scale_x = wide_scale(aspect)
+    edge_dx = 640 * (1 - float(scale_x))
     order, index = panes(data, label)
     name = Path(label).stem
     if name in common.SKIP:
@@ -116,16 +125,16 @@ def patch_layout(data: bytes, label: str, records: list, tracks: list) -> bytes:
     if name in WIPES:
         # Upstream SMO-AAR expands a round wipe uniformly until its mask covers
         # the wider panel. Normal root squish would leave its sides uncovered.
-        write('RootPane', 'scale_y', 0x48, 1.0, 1 / float(SCALE_X))
+        write('RootPane', 'scale_y', 0x48, 1.0, 1 / float(scale_x))
     else:
-        write('RootPane', 'scale_x', 0x44, 1.0, float(SCALE_X))
+        write('RootPane', 'scale_x', 0x44, 1.0, float(scale_x))
     if name in ROOT_EDGES:
         side, anchor, x, y = ROOT_EDGES[name]
         ap, _ = index[anchor]
         if struct.unpack_from(order + '2f', data, ap + 0x2c) != (x, y):
             raise ValueError(f'{label}: measured edge anchor changed')
         static('RootPane')
-        write('RootPane', 'translation_x', 0x2c, 0.0, side * EDGE_DX)
+        write('RootPane', 'translation_x', 0x2c, 0.0, side * edge_dx)
     for pane, (x, y) in CHILD_EDGES.get(name, {}).items():
         pos, _ = index[pane]
         if struct.unpack_from(order + '2f', data, pos + 0x2c) != (x, y):
@@ -133,7 +142,7 @@ def patch_layout(data: bytes, label: str, records: list, tracks: list) -> bytes:
         static(pane, {0})
         # Preserve edge distance in uniform UI pixels, including offscreen
         # authored positions. Animated ListPos remains wholly unchanged.
-        write(pane, 'translation_x', 0x2c, x, x + math.copysign(EDGE_DX / float(SCALE_X), x))
+        write(pane, 'translation_x', 0x2c, x, x + math.copysign(edge_dx / float(scale_x), x))
     if name == 'ContinueLoading':
         # This is an actual horizontally travelling progress icon, not a fixed
         # corner HUD. Its authored range and progress-bar animation are expanded
@@ -144,9 +153,9 @@ def patch_layout(data: bytes, label: str, records: list, tracks: list) -> bytes:
                 raise ValueError(f'{label}: unexpected loading-progress position')
             if pane != 'HomeIcon':
                 static(pane, {0})
-            write(pane, 'translation_x', 0x2c, expected_xy[0], expected_xy[0] / float(SCALE_X))
+            write(pane, 'translation_x', 0x2c, expected_xy[0], expected_xy[0] / float(scale_x))
         static('PicFooterBar', {8})
-        write('PicFooterBar', 'width', 0x4c, 1280.0, 1280.0 / float(SCALE_X))
+        write('PicFooterBar', 'width', 0x4c, 1280.0, 1280.0 / float(scale_x))
         if struct.unpack_from(order + 'f', data, index['PicProgressBar'][0] + 0x4c)[0] != 0.0:
             raise ValueError(f'{label}: expected zero-width animated progress bar')
     for pane in sorted(common.FULL_FRAME_PANES.get(name, set()) | common.FULL_FRAME_PARTS.get(name, set())):
@@ -160,22 +169,23 @@ def patch_layout(data: bytes, label: str, records: list, tracks: list) -> bytes:
             raise ValueError(f'{label}: unexpected full-frame surface dimensions')
         static(pane, {6 if part else 8})
         write(pane, 'scale_x' if part else 'width', 0x44 if part else 0x4c,
-              1.0 if part else 1280.0, (1.0 if part else 1280.0) / float(SCALE_X))
+              1.0 if part else 1280.0, (1.0 if part else 1280.0) / float(scale_x))
     for pane, expected in WIDE_BANDS.get(name, {}).items():
         pos, tag = index[pane]
         actual = struct.unpack_from(order + '2f', data, pos + 0x2c) + struct.unpack_from(order + '2f', data, pos + 0x4c)
         if tag != b'pic1' or actual != expected or struct.unpack_from(order + '2f', data, pos + 0x44) != (1.0, 1.0):
             raise ValueError(f'{label}: measured horizontal shade band changed')
         static(pane, {8})
-        write(pane, 'width', 0x4c, 1280.0, 1280.0 / float(SCALE_X))
+        write(pane, 'width', 0x4c, 1280.0, 1280.0 / float(scale_x))
     records.append({'member': label, 'action': 'phone_widescreen', 'source_sha256': common.sha(data),
                     'output_sha256': common.sha(output), 'changes': changes,
                     'animation_tracks_checked': len(tracks)})
     return bytes(output)
 
 
-def patch_progress_animation(data: bytes, label: str, records: list) -> bytes:
+def patch_progress_animation(data: bytes, label: str, records: list, aspect: Fraction = ASPECT) -> bytes:
     """Scale measured Hermite position/width values and slopes, keeping time."""
+    scale_x = wide_scale(aspect)
     if common.sha(data) != PROGRESS_ANIM_SHA:
         raise ValueError(f'{label}: source progress animation differs from measured file')
     output = bytearray(data)
@@ -195,9 +205,9 @@ def patch_progress_animation(data: bytes, label: str, records: list) -> bytes:
         for i in range(count):
             pos = offset + key_offset + i * 12
             time, value, slope = struct.unpack_from(order + '3f', data, pos)
-            struct.pack_into(order + '2f', output, pos + 4, value / float(SCALE_X), slope / float(SCALE_X))
-            keys.append({'offset': pos, 'time_unchanged': time, 'value_before': value, 'value_after': value / float(SCALE_X),
-                         'slope_before': slope, 'slope_after': slope / float(SCALE_X)})
+            struct.pack_into(order + '2f', output, pos + 4, value / float(scale_x), slope / float(scale_x))
+            keys.append({'offset': pos, 'time_unchanged': time, 'value_before': value, 'value_after': value / float(scale_x),
+                         'slope_before': slope, 'slope_after': slope / float(scale_x)})
         changes.append({'pane': key[0], 'channel': key[1], 'keys': keys})
         seen.add(key)
     if seen != set(expected_tracks):
@@ -234,7 +244,7 @@ def members(data: bytes, label: str) -> list[tuple[str, int, int]]:
     return result
 
 
-def patch_archive(data: bytes, label: str, records: list, depth=0) -> bytes:
+def patch_archive(data: bytes, label: str, records: list, depth=0, aspect: Fraction = ASPECT) -> bytes:
     if depth > 5:
         raise ValueError('archive nesting limit')
     ranges = members(data, label)
@@ -244,11 +254,11 @@ def patch_archive(data: bytes, label: str, records: list, depth=0) -> bytes:
     for name, lo, hi in ranges:
         body, child = data[lo:hi], label + '/' + name
         if body[:4] == b'SARC':
-            body = patch_archive(body, child, records, depth + 1)
+            body = patch_archive(body, child, records, depth + 1, aspect)
         elif name.endswith('.bflyt'):
-            body = patch_layout(body, child, records, tracks)
+            body = patch_layout(body, child, records, tracks, aspect)
         elif name.endswith('ContinueLoading_ProgressBar.bflan'):
-            body = patch_progress_animation(body, child, records)
+            body = patch_progress_animation(body, child, records, aspect)
         elif body[:4] == b'Yaz0':
             raise ValueError(f'{child}: unexpected nested compression')
         if len(body) != hi - lo:
@@ -262,8 +272,9 @@ def camera_bytes(aspect=ASPECT) -> bytes:
     return struct.pack('<2I', 0x5280000b | ((bits & 0xffff) << 5), 0x72a0000b | ((bits >> 16) << 5))
 
 
-def prepare_camera(source: Path, destination: Path, feedback_source: Path) -> dict:
+def prepare_camera(source: Path, destination: Path, feedback_source: Path, aspect: Fraction = ASPECT) -> dict:
     """Copy the rewritten modules/tables; change only two guarded instructions."""
+    kind = 'Phone' if aspect > Fraction(16, 9) else 'Display'
     text = (source / 'main.fixups.tsv').read_text()
     if f'# BUILD_ID\t{common.BUILD_ID}' not in text or '# PATCH_OFF\t0x14c0000' not in text:
         raise ValueError('unexpected rewritten main identity/layout')
@@ -286,19 +297,19 @@ def prepare_camera(source: Path, destination: Path, feedback_source: Path) -> di
         if item.name not in ('main.patched.bin', 'main.cuts.tsv'):
             (destination / item.name).symlink_to(item.resolve())
     output = bytearray(data)
-    output[0x96816c:0x968174] = camera_bytes()
+    output[0x96816c:0x968174] = camera_bytes(aspect)
     (destination / 'main.patched.bin').write_bytes(output)
-    cut = (source / 'main.cuts.tsv').read_text().replace('4:3 camera projection', 'Phone camera projection')
+    cut = (source / 'main.cuts.tsv').read_text().replace('4:3 camera projection', f'{kind} camera projection')
     for i in range(2):
         off = 0x96816c + 4 * i
-        cut += f'{off:#x}\t{data[off:off + 4].hex()}\t{output[off:off + 4].hex()}\tPhone239:110 aspect constructor immediate (SMO-AAR)\n'
+        cut += f'{off:#x}\t{data[off:off + 4].hex()}\t{output[off:off + 4].hex()}\t{kind}{aspect.numerator}:{aspect.denominator} aspect constructor immediate (SMO-AAR)\n'
     (destination / 'main.cuts.tsv').write_text(cut)
     changed = [i for i, (a, b) in enumerate(zip(data, output)) if a != b]
     if not changed or any(not 0x96816c <= i < 0x968174 for i in changed):
         raise ValueError('unexpected rewritten byte changes')
     return {'source': str(source), 'destination': str(destination), 'source_main_sha256': common.sha(data),
             'output_main_sha256': common.sha(output), 'changed_byte_offsets': [hex(x) for x in changed],
-            'camera_original': data[0x96816c:0x968174].hex(), 'camera_replacement': camera_bytes().hex(),
+            'camera_original': data[0x96816c:0x968174].hex(), 'camera_replacement': camera_bytes(aspect).hex(),
             'verified_guards': {hex(k): v for k, v in checks.items()},
             'other_modules_and_tables': 'absolute read-only-use symlinks to original rewritten folder'}
 

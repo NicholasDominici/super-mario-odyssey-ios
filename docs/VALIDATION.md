@@ -87,7 +87,12 @@
 - Three thunder-effect geometry shaders remain unsupported in the original
   tested shader set. Full-game visual correctness isn't certified.
 - Internal rendering is 1600×900. Camera/display aspect is separate from raster
-  resolution. The two presets are explicit, not universal auto-layout.
+  resolution. Presets are chosen at build time, not detected on the device.
+- iPad model presets and `iphone-duo` select the same live 4:3 build as `ipad`
+  and `duo`. iPhone model presets other than 239:110 reuse the guarded phone
+  camera and HUD rules at that model's exact aspect, without the live path. Those
+  aspects pass synthetic unit checks only; their gameplay, HUD placement and
+  transitions haven't been checked on a device.
 - 120 FPS is optional frame interpolation, with the simulation at 60 Hz.
   Hardware support, latency, artifacts, heat and sustained performance vary.
 - Cloud save capture failed intermittently on some phone commits. The included
@@ -137,8 +142,8 @@ are not uploaded to GitHub.
 python3 tools/check.py
 ```
 
-The checks cover structural layout handling with synthetic archives, preset and
-CloudKit configuration, exact-profile signing policy, controller transport and
+The checks cover structural layout handling with synthetic archives, preset,
+model-table and CloudKit configuration, exact-profile signing policy, controller transport and
 effect policy, gameplay-observer guards, presentation geometry, save archive
 integrity/atomic restore, and the production CloudKit coordinator with controlled
 transport callbacks. No real cloud account or device is touched.
