@@ -28,7 +28,10 @@ ROOT_EDGES = {name: (1 if values[2] > 0 else -1, values[1], values[2], values[3]
 # These measured static panes have different positions in this supplied version
 # from the upstream mod's literals. Their own animation channels are checked.
 CHILD_EDGES = {'ContinueLoading': {'ParLogo': (-510.0, 270.0)},
-               'Menu': {'List': (-590.0, -29.0), 'ParLogo': (-510.0, 270.0)}}
+               'Menu': {'List': (-590.0, -29.0), 'ParLogo': (-510.0, 270.0)},
+               # Drawn under the title menu: its logo must move with Menu's or
+               # both copies show side by side.
+               'BootLoading': {'ParLogo': (-510.0, 270.0)}}
 WIDE_BANDS = {'PlayGuide': {'PicBase': (0.0, -360.0, 1280.0, 280.0)},
               'TalkMessage': {'PicBase': (0.0, -360.0, 1280.0, 280.0)},
               'ContinueLoading': {'PicFooter': (0.0, -360.0, 1280.0, 58.0)}}
@@ -268,6 +271,7 @@ def patch_archive(data: bytes, label: str, records: list, depth=0, aspect: Fract
     output = bytearray(data)
     for name, lo, hi in ranges:
         body, child = data[lo:hi], label + '/' + name
+        body = common.patch_menu_member(name, body, child, records)
         if body[:4] == b'SARC':
             body = patch_archive(body, child, records, depth + 1, aspect)
         elif name.endswith('.bflyt'):

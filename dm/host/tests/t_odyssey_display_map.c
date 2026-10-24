@@ -20,11 +20,16 @@ static uint8_t layout[0xa0] __attribute__((aligned(8)));
 static uint8_t screen[0xc0] __attribute__((aligned(8)));
 static uint8_t root[0xd8] __attribute__((aligned(8)));
 static char owner_name[64];
-static float expect_x, expect_y, expect_sx, expect_sy;
+static uint8_t all_pane[0xd8] __attribute__((aligned(8)));
+static uint8_t cursor_pane[0xd8] __attribute__((aligned(8)));
+static float expect_x, expect_y, expect_sx, expect_sy, expect_cursor_x, expect_cursor_y;
+static int check_cursor;
 static unsigned delegates;
 static void delegate(void *value, void *draw, int recursive) {
     assert(value == layout && draw == (void *)0x88 && recursive == 1);
     ++delegates;
+    if (check_cursor)
+        assert(fabsf(hud_float(cursor_pane, 0x30) - expect_cursor_x) < .001f && fabsf(hud_float(cursor_pane, 0x34) - expect_cursor_y) < .001f);
     assert(fabsf(hud_float(root, 0x30) - expect_x) < .001f && fabsf(hud_float(root, 0x34) - expect_y) < .001f);
     assert(fabsf(hud_float(root, 0x48) - expect_sx) < .00001f && fabsf(hud_float(root, 0x4c) - expect_sy) < .00001f);
 }
@@ -42,6 +47,31 @@ static void objects(const char *owner, float x, float y, float sx, float sy) {
     strcpy((char *)root + 0xb8, "RootPane");
     hud_original = delegate;
     expect_x = x; expect_y = y; expect_sx = sx; expect_sy = sy;
+    check_cursor = 0;
+}
+static void child(uint8_t *parent, uint8_t *pane, const char *name, float x, float y) {
+    memset(pane, 0, 0xd8);
+    put_pointer(pane, 0, (void *)hud_pane_vptr);
+    put_pointer(pane, 0x20, pane + 0x20); put_pointer(pane, 0x28, pane + 0x20);
+    put_float(pane, 0x30, x); put_float(pane, 0x34, y); put_float(pane, 0x48, 1); put_float(pane, 0x4c, 1);
+    strcpy((char *)pane + 0xb8, name);
+    put_pointer(pane, 0x18, parent);
+    uintptr_t last = hud_pointer(parent, 0x20);
+    put_pointer((uint8_t *)last, 8, pane + 8);
+    put_pointer(pane, 8, (void *)last);
+    put_pointer(pane, 0x10, parent + 0x20);
+    put_pointer(parent, 0x20, pane + 8);
+}
+static void calculate(void);
+// The game stores the item's on-screen position; the root must not move it again.
+static void menu_cursor(float sx, float sy, float ty, float live_y) {
+    objects("Shop", 0, ty, sx, sy);
+    child(root, all_pane, "All", 0, 0); child(all_pane, cursor_pane, "ParCursor", -560, 54);
+    expect_sy = live_y;
+    check_cursor = 1; expect_cursor_x = -560 / sx; expect_cursor_y = (54 - ty) / live_y;
+    uint8_t before[sizeof cursor_pane]; memcpy(before, cursor_pane, sizeof before);
+    calculate();
+    for (unsigned i = 0; i < sizeof before; i++) if (i != 0x58) assert(before[i] == cursor_pane[i]);
 }
 // Calculate, then require every authored field back exactly (dirty bit aside).
 static void calculate(void) {
@@ -115,9 +145,23 @@ int main(void) {
     objects("Map", 10, 0, kept, phone ? 1 : .75f); calculate();
     objects("Map", 0, 0, 1.5f, 1); calculate();
     objects("MapIcon", 100, 0, kept, phone ? 1 : .75f); expect_x = 100 * kept; calculate();
+    // Menu cursors: phone and static 4:3 roots, then the live 4:3 root (with an
+    // edge translation). A cursor under a moved All, or a 16:9 root, is left alone.
+    if (phone) menu_cursor(.817696f, 1, 0, 1);
+    else {
+        menu_cursor(1, .75f, -90, .75f);
+        enabled = 1; menu_cursor(1, .75f, 0, target); enabled = 0;
+    }
+    objects("Shop", 0, 0, phone ? .817696f : 1, phone ? 1 : .75f);
+    child(root, all_pane, "All", 12, 0); child(all_pane, cursor_pane, "ParCursor", -560, 54);
+    check_cursor = 1; expect_cursor_x = -560; expect_cursor_y = 54; calculate();
+    objects("Shop", 0, 0, 1, 1);
+    child(root, all_pane, "All", 0, 0); child(all_pane, cursor_pane, "ParCursor", -560, 54);
+    check_cursor = 1; calculate();
     dm_odyssey_display_hud_stats stats; dm_odyssey_display_hud_snapshot(&stats);
     assert(stats.map_icons == (phone ? 4u : 7u) && stats.map_roots == (phone ? 1u : 2u));
-    printf("PASS: map-screen rule (%s): icon roots follow Map's root, player scale ratio, other owners untouched, exact restore\n",
+    assert(stats.menu_cursors == (phone ? 1u : 2u));
+    printf("PASS: map-screen rule (%s): icon roots follow Map's root, player scale ratio, other owners untouched, menu cursors in root units, exact restore\n",
            phone ? "phone" : "4:3");
     return 0;
 }

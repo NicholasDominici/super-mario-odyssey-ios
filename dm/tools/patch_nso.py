@@ -55,6 +55,23 @@ CUTS = {
   # Must ship with display_aspect 4:3 and the matching layout RootPane correction; never stretch an uncorrected game's presentation alone.
   'b424be150a8e7d78701cbe7a439d9ebf': [
     (0x73de88, '1aa90894', '1f2003d5', '4:3 camera projection: retain sead constructor aspect; al::Projection sets near/far/FOV afterwards (SMO-AAR)'),
+    # Title and pause menu without "Playing in VR" (part 6) and "Action Guide" (part 3). The menu maps its logical items to parts through
+    # two tables (title 0xec8270, pause 0xec8288) and wraps the cursor at the count passed to main+0x1d6850. Both counts become 4 and the
+    # tables keep Save/Options/VR (parts 4/5/6) in logical slots 2/4/5 for the special-mode deactivation there. The 2P checks that grey
+    # out the VR slot (title logical 3, pause logical 2) would now hit Options/Save, so those calls go. Paired with the Menu layout
+    # changes in tools/prepare_odyssey_aspect.py (hidden parts, closed-up positions); the decide handlers still test part numbers.
+    (0x49723c, 'e1071f32', '81008052', 'title menu: 4 items (Resume, Resume 2P, New Game, Options)'),
+    (0x497324, '77fef417', 'c0035fd6', 'title menu: drop the 2P VR-slot deactivate tail call (return value unused)'),
+    (0x497334, '23fef417', 'c0035fd6', 'title menu: drop the 2P VR-slot activate tail call'),
+    (0x49609c, 'e1071f32', '81008052', 'pause menu: 4 items (Continue, Two/One Player, Save, Options)'),
+    (0x496138, 'f202f597', '1f2003d5', 'pause menu: drop the 2P VR-slot deactivate call'),
+    (0x496164, '9702f597', '1f2003d5', 'pause menu: drop the 2P VR-slot activate call'),
+    (0x4963f4, '4302f597', '1f2003d5', 'menu update: drop the per-frame 2P VR-slot deactivate call'),
+    (0x4963fc, 'f101f597', '1f2003d5', 'menu update: drop the per-frame 2P VR-slot activate call'),
+    (0xec8270, '000000000100000002000000060000000300000005000000', '000000000100000002000000050000000600000003000000',
+     'title menu parts: Resume, Resume 2P, New Game, Options (unused tail: VR, Help)'),
+    (0xec8288, '000000000100000006000000030000000400000005000000', '000000000100000004000000050000000500000006000000',
+     'pause menu parts: Continue, Two/One Player, Save, Options (tail keeps Options/VR in logical 4/5)'),
   ],
   # Super Mario Bros. Wonder v0 main
   'cd6e42aee7934f4d8393cd43893ae25e': [

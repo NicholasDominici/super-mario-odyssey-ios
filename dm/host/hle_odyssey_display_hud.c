@@ -386,6 +386,46 @@ static void hud_map_record(int result, const uint8_t *map_root, float base_x, fl
     if (result == 1) ++hud_stats.map_icons; else if (result == 2) ++hud_stats.map_roots;
     pthread_mutex_unlock(&hud_stats_lock);
 }
+// Menu cursors: a ParCursor pane directly under an identity All pane holds the
+// selected item's on-screen position. Every writer reads it with calcPaneTrans
+// (main+0x630b60 / 0x630be0) and stores it unchanged (main+0x630d50 / 0x630a30),
+// which is only a local position under an identity root. A prepared or live
+// root would transform it again and set the cap over the item. Convert it into
+// root-local units for Calculate, after any live root edit.
+static uint8_t *hud_child(uint8_t *parent, const char *name) {
+    uintptr_t sentinel = (uintptr_t)parent + 0x20, node = hud_pointer(parent, 0x28);
+    uint8_t *found = NULL;
+    for (unsigned i = 0; node != sentinel; i++) {
+        if (i == HUD_PANES || node < 8 || (node & 7)) return NULL;
+        uint8_t *child = (uint8_t *)(node - 8);
+        if (!hud_pane_valid(child) || hud_pointer(child, 0x18) != (uintptr_t)parent) return NULL;
+        if (hud_name(child, name)) {
+            if (found) return NULL; // Ambiguous: leave the layout alone.
+            found = child;
+        }
+        node = hud_pointer(child, 0x10);
+    }
+    return found;
+}
+static int hud_cursor_plan(void *layout, hud_map_edits *plan) {
+    if (!hud_aligned(layout) || hud_pointer(layout, 0) != hud_layout_vptr) return 0;
+    uint8_t *screen = (uint8_t *)hud_pointer(layout, 0x88);
+    if (!hud_aligned(screen) || hud_pointer(screen, 0) != hud_screen_vptr ||
+        hud_pointer(screen, 0x30) != (uintptr_t)layout ||
+        !hud_owner_name((const char *)hud_pointer(screen, 0xb8), plan->owner)) return 0;
+    uint8_t *root = (uint8_t *)hud_pointer(layout, 0x18);
+    if (!hud_pane_valid(root) || hud_pointer(root, 0x18) || !hud_name(root, "RootPane") ||
+        (hud_pointer(root, 0) != hud_pane_vptr && hud_pointer(root, 0) != hud_root_vptr) ||
+        hud_float(root, 0x3c) != 0 || hud_float(root, 0x40) != 0 || hud_float(root, 0x44) != 0) return 0;
+    float sx = hud_float(root, 0x48), sy = hud_float(root, 0x4c), tx = hud_float(root, 0x30), ty = hud_float(root, 0x34);
+    if (sx < .25f || sx > 8 || sy < .25f || sy > 8 || (sx == 1 && sy == 1 && tx == 0 && ty == 0)) return 0;
+    uint8_t *all = hud_child(root, "All");
+    if (!all || hud_float(all, 0x30) != 0 || hud_float(all, 0x34) != 0 || hud_float(all, 0x3c) != 0 ||
+        hud_float(all, 0x40) != 0 || hud_float(all, 0x44) != 0 || hud_float(all, 0x48) != 1 || hud_float(all, 0x4c) != 1) return 0;
+    uint8_t *cursor = hud_child(all, "ParCursor");
+    return cursor && hud_map_add(plan, cursor, 0x30, (hud_float(cursor, 0x30) - tx) / sx) &&
+        hud_map_add(plan, cursor, 0x34, (hud_float(cursor, 0x34) - ty) / sy);
+}
 static void hud_calculate(void *layout, void *draw_info, int recursive) {
     pthread_mutex_lock(&hud_stats_lock); ++hud_stats.calls; pthread_mutex_unlock(&hud_stats_lock);
     if (hud_depth) {
@@ -411,7 +451,14 @@ static void hud_calculate(void *layout, void *draw_info, int recursive) {
         pthread_mutex_lock(&hud_stats_lock); ++hud_stats.disabled; pthread_mutex_unlock(&hud_stats_lock);
     }
     if (mapped) hud_map_record(mapped, map_root, map_base_x, map_base_y);
+    hud_map_edits cursor = {0};
+    int cursored = hud_cursor_plan(layout, &cursor);
+    if (cursored) {
+        hud_map_apply(&cursor, 0);
+        pthread_mutex_lock(&hud_stats_lock); ++hud_stats.menu_cursors; pthread_mutex_unlock(&hud_stats_lock);
+    }
     hud_original(layout, draw_info, recursive);
+    if (cursored) hud_map_apply(&cursor, 1);
     if (result == 1) hud_apply(&plan, 1);
     if (mapped == 1) hud_map_apply(&map, 1);
     --hud_depth;

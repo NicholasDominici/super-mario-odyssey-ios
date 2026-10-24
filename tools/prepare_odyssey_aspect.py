@@ -82,6 +82,19 @@ SCREEN_FILTERS = {'FilterGlasses': {'PicCaptureUse': (0.0, 0.0, 1280.0, 1000.0),
                                     'PicFilter': (0.0, 0.0, 1280.0, 1000.0)}}
 
 
+# Title/pause menu without "Playing in VR" (ParList06) and "Action Guide"
+# (ParList03), paired with the main cuts that shorten both item tables to four
+# (patch_nso.py). The removed items are hidden and the remaining ones close up:
+# Options takes the title VR slot; pause Save and Options take VR's and Help's.
+MENU_LAYOUT_SHA = '4bbad5beeb507c96547bf4ba9e9dbeb2d83930069b99218316f59590062a1daf'
+MENU_HIDDEN = ('ParList03', 'ParList06')
+MENU_LAYOUT_Y = {'ParList04': (-138.0, -50.0)}
+MENU_ANIMATIONS = {
+    'Menu_SelectTitle.bflan': ('18ff4e563fa3a930dd6b13d9af9a4ab86395a404d983be61e9e715f03ad14b2c', {'ParList05': (-192.0, -104.0)}),
+    'Menu_SelectPause.bflan': ('e5ece1fd4d04865fd335addca24bb3b3de345b51725b3e2d7bbf5b50372a7db4', {'ParList05': (-182.0, -94.0)}),
+}
+
+
 def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -301,6 +314,62 @@ def patch_layout(data: bytes, label: str, records: list[dict], tracks: list[dict
     return bytes(output)
 
 
+def _menu_layout(data: bytes, label: str, records: list[dict]) -> bytes:
+    if sha(data) != MENU_LAYOUT_SHA:
+        raise ValueError(f'{label}: menu layout differs from the verified 1.4.1 file')
+    order = endian(data)
+    header_size = struct.unpack_from(order + 'H', data, 6)[0]
+    count = struct.unpack_from(order + 'H', data, 16)[0]
+    panes, pos = {}, header_size
+    for _ in range(count):
+        tag, size = struct.unpack_from(order + '4sI', data, pos)
+        if tag in PANE_TAGS:
+            panes[data[pos + 12:pos + 36].split(b'\0', 1)[0].decode()] = pos
+        pos += size
+    output, changes = bytearray(data), []
+    for name in MENU_HIDDEN:
+        output[panes[name] + 8] &= 0xFE  # Pane flag bit 0: visible.
+        changes.append({'pane': name, 'field': 'visible', 'before': data[panes[name] + 8] & 1, 'after': 0})
+    for name, (before, after) in MENU_LAYOUT_Y.items():
+        if struct.unpack_from(order + 'f', data, panes[name] + 0x30)[0] != before:
+            raise ValueError(f'{label}: {name} moved')
+        struct.pack_into(order + 'f', output, panes[name] + 0x30, after)
+        changes.append({'pane': name, 'field': 'translation_y', 'before': before, 'after': after})
+    records.append({'member': label, 'action': 'remove_menu_items', 'source_sha256': sha(data),
+                    'output_sha256': sha(output), 'changes': changes})
+    return bytes(output)
+
+
+def _menu_animation(data: bytes, label: str, records: list[dict], expected_sha: str, moves: dict) -> bytes:
+    if sha(data) != expected_sha:
+        raise ValueError(f'{label}: menu animation differs from the verified 1.4.1 file')
+    order, output, changes = endian(data), bytearray(data), []
+    for track in animation_tracks(data, label):
+        if track['target'] in moves and (track['kind'], track['channel']) == ('FLPA', 1):
+            before, after = moves[track['target']]
+            _, _, curve, _, keys, _, key_offset = struct.unpack_from(order + '4BHHI', data, track['offset'])
+            at = track['offset'] + key_offset + 4
+            if curve != 2 or keys != 1 or struct.unpack_from(order + 'f', data, at)[0] != before:
+                raise ValueError(f'{label}: unexpected {track["target"]} key')
+            struct.pack_into(order + 'f', output, at, after)
+            changes.append({'pane': track['target'], 'channel': 1, 'before': before, 'after': after})
+    if len(changes) != len(moves):
+        raise ValueError(f'{label}: missing menu position track')
+    records.append({'member': label, 'action': 'remove_menu_items', 'source_sha256': sha(data),
+                    'output_sha256': sha(output), 'changes': changes})
+    return bytes(output)
+
+
+def patch_menu_member(name: str, body: bytes, label: str, records: list[dict]) -> bytes:
+    """Shared by every display preparation; other members are returned unchanged."""
+    base = Path(name).name
+    if base == 'Menu.bflyt':
+        return _menu_layout(body, label, records)
+    if base in MENU_ANIMATIONS:
+        return _menu_animation(body, label, records, *MENU_ANIMATIONS[base])
+    return body
+
+
 def patch_sarc(data: bytes, label: str, records: list[dict], depth: int = 0) -> bytes:
     """Walk exact SARC member ranges recursively; no archive repacking needed."""
     if depth > 5 or len(data) < 40 or data[:4] != b'SARC':
@@ -356,6 +425,7 @@ def patch_sarc(data: bytes, label: str, records: list[dict], depth: int = 0) -> 
         ranges.append((lo, hi))
         body = data[lo:hi]
         child = label + '/' + name
+        body = patch_menu_member(name, body, child, records)
         if name.endswith('.bflyt'):
             body = patch_layout(body, child, records, tracks)
         elif body[:4] == b'SARC':

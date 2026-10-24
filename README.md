@@ -110,11 +110,14 @@ Interpolation can introduce visual artifacts and latency and falls back when
 unsupported. Use `--frame-generation off` to turn it off, or `--show-fps` to see
 the counter. See [validation and limitations](docs/VALIDATION.md).
 
-## Online features
+## Unsupported features
 
 Balloon World needs Nintendo's online service, which this port doesn't have.
 Talking to Luigi shows a single message saying it isn't supported yet, instead
 of offering to connect. That message is in English in every game language.
+
+The title and pause menus leave out **Playing in VR** and **Action Guide**,
+which don't work in this port. The remaining items close up in their place.
 
 ## Saves and updates
 
