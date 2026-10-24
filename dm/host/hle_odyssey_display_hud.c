@@ -159,6 +159,10 @@ static const hud_fill hud_fills[] = {
 #undef HUD_OPTION
     {"BootLoading","ParBG",1}, {"ContinueLoading","ParBG",1}, {"Menu","ParBG",1},
 };
+// Full-screen filters (Moe-Eye glasses): the 4:3 preparation sets their 1000-tall
+// surfaces to 1000/.75 so they keep the authored framing; keep that at any aspect.
+typedef struct { const char *owner, *pane; } hud_filter;
+static const hud_filter hud_filters[] = {{"FilterGlasses","PicCaptureUse"}, {"FilterGlasses","PicFilter"}};
 
 enum { HUD_PANES = 512, HUD_EDITS = 16 };
 typedef struct { uint8_t *pane; size_t offset; float before, after; } hud_edit;
@@ -260,6 +264,16 @@ static int hud_plan_make(void *layout, const dm_odyssey_display_layout *geometry
         if (!pane || hud_float(pane, 0x30) != 0 || hud_float(pane, 0x34) != 0 ||
             hud_float(pane, 0x3c) != 0 || hud_float(pane, 0x40) != 0 || hud_float(pane, 0x44) != 0 ||
             hud_float(pane, 0x50) != 1280 || hud_float(pane, 0x54) != (fill->part ? 720 : 960) ||
+            hud_float(pane, 0x4c) <= 0 || hud_float(pane, 0x4c) > 8 ||
+            !hud_add(plan, pane, 0x4c, hud_float(pane, 0x4c) * .75f / plan->target_y)) return 0;
+    }
+    for (unsigned i = 0; i < sizeof hud_filters / sizeof *hud_filters; i++) {
+        const hud_filter *filter = &hud_filters[i];
+        if (strcmp(plan->owner, filter->owner)) continue;
+        uint8_t *pane = hud_find(plan, filter->pane);
+        if (!pane || hud_float(pane, 0x30) != 0 || hud_float(pane, 0x34) != 0 ||
+            hud_float(pane, 0x3c) != 0 || hud_float(pane, 0x40) != 0 || hud_float(pane, 0x44) != 0 ||
+            hud_float(pane, 0x50) != 1280 || hud_float(pane, 0x54) != 1000.0f / .75f ||
             hud_float(pane, 0x4c) <= 0 || hud_float(pane, 0x4c) > 8 ||
             !hud_add(plan, pane, 0x4c, hud_float(pane, 0x4c) * .75f / plan->target_y)) return 0;
     }

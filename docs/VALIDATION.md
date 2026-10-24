@@ -93,9 +93,11 @@
   camera and HUD rules at that model's exact aspect, without the live path. Those
   aspects pass synthetic unit checks only; their gameplay, HUD placement and
   transitions haven't been checked on a device.
-- Phone preparations widen the Moe-Eye glasses filter (`FilterGlasses`) to the
-  full panel width; it previously stopped short of both sides. Its 1000-unit
-  height already covers 4:3 and the live iPad/Duo range down to about 1.28:1.
+- Every preparation compensates the Moe-Eye glasses filter (`FilterGlasses`)
+  on the axis its root narrows: phones widen it to the full panel width (it
+  previously stopped short of both sides), 4:3 sets its 1000-unit surfaces to
+  1000/.75 so it keeps the authored framing, and the live adapter holds that
+  framing at any supported aspect. The 4:3 and live forms are untested on a device.
   Phone preparations also widen the shared footer bars (`FooterParts`) to both
   edges. Every preparation now corrects the map footer (`MapFooter`), which was
   left at 16:9 and stretched its button guides; 4:3 pins it to the bottom edge

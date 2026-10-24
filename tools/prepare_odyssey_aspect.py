@@ -71,6 +71,12 @@ FULL_FRAME_PANES = {
 # These parts embed CommonBgParts, whose own root is already a full-frame
 # exception. Compensate the parent's .75 once, rather than changing the image.
 FULL_FRAME_PARTS = {'BootLoading': {'ParBG'}, 'ContinueLoading': {'ParBG'}, 'Menu': {'ParBG'}}
+# Full-screen filters drawn over the picture (Moe-Eye glasses): centered 1000-tall
+# surfaces that overscan the 720 panel. Each preparation compensates the axis its
+# root narrows (height here, width on phones), so every display keeps the authored
+# framing instead of a squashed or narrowed filter.
+SCREEN_FILTERS = {'FilterGlasses': {'PicCaptureUse': (0.0, 0.0, 1280.0, 1000.0),
+                                    'PicFilter': (0.0, 0.0, 1280.0, 1000.0)}}
 
 
 def sha(data: bytes) -> str:
@@ -276,6 +282,15 @@ def patch_layout(data: bytes, label: str, records: list[dict], tracks: list[dict
         else:
             static(name, {9})
             write_float(name, 'height', position + 0x50, 720.0, 720.0 / SCALE_Y)
+    for name, expected in SCREEN_FILTERS.get(layout_name, {}).items():
+        position, tag = pane(name)
+        actual = struct.unpack_from(order + '2f', data, position + 0x2c) + struct.unpack_from(order + '2f', data, position + 0x4c)
+        if tag != b'pic1' or actual != expected or struct.unpack_from(order + '2f', data, position + 0x44) != (1.0, 1.0):
+            raise ValueError(f'{label}: measured screen filter {name} changed')
+        if struct.unpack_from(order + '3f', data, position + 0x38) != (0.0, 0.0, 0.0) or data[position + 9] != 0:
+            raise ValueError(f'{label}: {name} has an unexpected orientation')
+        static(name, {9})
+        write_float(name, 'height', position + 0x50, expected[3], expected[3] / SCALE_Y)
     records.append({'member': label, 'action': 'scale_y', 'offset': offset,
                     'before': before, 'after': after, 'source_sha256': sha(data),
                     'output_sha256': sha(output), 'changes': changes,
