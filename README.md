@@ -110,6 +110,12 @@ Interpolation can introduce visual artifacts and latency and falls back when
 unsupported. Use `--frame-generation off` to turn it off, or `--show-fps` to see
 the counter. See [validation and limitations](docs/VALIDATION.md).
 
+## Online features
+
+Balloon World needs Nintendo's online service, which this port doesn't have.
+Talking to Luigi shows a single message saying it isn't supported yet, instead
+of offering to connect. That message is in English in every game language.
+
 ## Saves and updates
 
 Progress lives in `Documents/save`, visible through the app's folder in Files

@@ -28,6 +28,9 @@ PANE_TAGS = frozenset({b'pan1', b'pic1', b'txt1', b'wnd1', b'bnd1', b'prt1'})
 # Each row carries one exact anchor coordinate measured from the supplied game.
 EDGE_ANCHORS = {
     'CounterCoin': (90.0, 'All', -600.0, 296.0),
+    # The regional coin counter is its own layout beside CounterCoin; it must
+    # follow the same top-left edge or the gap between them changes.
+    'CounterCollectCoin': (90.0, 'All', -475.0, 302.5),
     'CounterLife': (90.0, 'All', 556.0, 284.0),
     'CounterLifeKids': (90.0, 'All', 556.0, 284.0),
     'CounterLifeUp': (90.0, 'All', 556.0, 284.0),

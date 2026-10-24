@@ -58,7 +58,7 @@ camera/HUD without shaders, Xcode compilation, signing, or device access.
 
 The build creates a separate RomFS copy (APFS clones when available) and replaces
 only the corrected layout archives (210 for 4:3 builds, 211 for phone builds)
-in that copy. Original game files remain
+and the 15 Balloon World event/message archives in that copy. Original game files remain
 unchanged. All game-bearing outputs and local receipts stay outside the repo.
 
 ## Why a Mac build is necessary

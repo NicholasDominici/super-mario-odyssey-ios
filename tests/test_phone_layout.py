@@ -64,7 +64,7 @@ class PhoneAspectTests(unittest.TestCase):
 
 
     def test_hud_anchor_shape_and_animated_child_preserved(self):
-        for name, x, y in [('CounterCoin', -600., 296.), ('CounterLife', 556., 284.)]:
+        for name, x, y in [('CounterCoin', -600., 296.), ('CounterCollectCoin', -475., 302.5), ('CounterLife', 556., 284.)]:
             before = layout([('All', b'pan1', x, y, 30., 40.)])
             records = []
             after = phone.patch_layout(before, name+'.bflyt', records, [])

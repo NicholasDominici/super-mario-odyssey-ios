@@ -105,6 +105,18 @@
   210 archives and phone builds 211. These were measured against the original
   layouts. The player reported the 437:201 phone build with these fixes working
   on an iPhone 18 Pro; 4:3 and live iPad/Duo builds of them are untested on a device.
+- The regional coin counter (`CounterCollectCoin`) is its own layout beside
+  `CounterCoin`. It now follows the same top-left edge anchor in every
+  preparation and in the live adapter; before, the gap between the two counters
+  widened on phones (and grew vertically on 4:3). Measured against the original
+  layouts; not yet seen on a device.
+- Balloon World is unsupported (it needs Nintendo's online service). Every
+  preparation routes Luigi's standby event flow (`EventData/BalloonGame.szs`,
+  `NpcStandby.byml`) so each talk shows one A-advanced message and ends, and no
+  flow entry can reach `StartConnect`. The message replaces the otherwise
+  2P-only `TimeBalloon_Separate` text in all 14 languages' `SystemMessage.szs`,
+  in English, keeping Luigi's voice tag. Synthetic tests and a read-back of the
+  prepared files cover it; not yet seen on a device.
 - Map icons are positioned by the game at runtime in the map's own root units,
   which skip the map's prepared or live correction, so they drifted from their
   spots away from the cursor. The exact-build Calculate adapter now records the

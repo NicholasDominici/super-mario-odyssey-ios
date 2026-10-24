@@ -91,6 +91,12 @@ class AspectTests(unittest.TestCase):
         self.assertEqual(360.0 * 0.75 + 90.0, 360.0)
         self.assertEqual(-360.0 * 0.75 - 90.0, -360.0)
 
+    def test_regional_coin_counter_follows_the_coin_counter_edge(self):
+        for name, x, y in [('CounterCoin', -600.0, 296.0), ('CounterCollectCoin', -475.0, 302.5)]:
+            after = aspect.patch_layout(with_child('All', x, y, 30.0, 40.0, b'pan1'), f'{name}.bflyt', [])
+            self.assertEqual(struct.unpack_from('<f', after, 20 + 0x30)[0], 90.0)
+            self.assertEqual(struct.unpack_from('<f', after, 20 + 0x48)[0], 0.75)
+
     def test_glasses_filter_keeps_its_authored_framing(self):
         before = bytearray(with_child('PicCaptureUse', height=1000.0))
         second = bytearray(before[20 + 0x54:])

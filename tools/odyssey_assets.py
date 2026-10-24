@@ -9,6 +9,7 @@ import tempfile
 
 from odyssey_displays import resolve
 import prepare_odyssey_aspect as pad
+import prepare_odyssey_balloon as balloon
 import prepare_odyssey_phone as phone
 
 TITLE = '0100000000010000'
@@ -100,6 +101,10 @@ def prepare_assets(repo: Path, extracted: Path, rewritten: Path, output: Path, p
         expected = 210 if display.live else 211
         if len(receipt['archives']) != expected:
             raise ValueError(f'Expected exactly {expected} corrected layout archives')
+        # Every preset: Luigi says Balloon World (online only) is unsupported.
+        unsupported = balloon.prepare(extracted / 'RomFS', overlay)
+        if {a['relative_path'] for a in unsupported} & {a['relative_path'] for a in receipt['archives']}:
+            raise ValueError('Balloon World archives overlap the corrected layout archives')
         # APFS clones are copy-on-write; fall back to ordinary independent copies.
         romfs = stage / 'RomFS'
         cp = subprocess.run(['cp', '-cR', str(extracted / 'RomFS'), str(romfs)], capture_output=True)
@@ -107,7 +112,7 @@ def prepare_assets(repo: Path, extracted: Path, rewritten: Path, output: Path, p
             if romfs.exists():
                 shutil.rmtree(romfs)
             shutil.copytree(extracted / 'RomFS', romfs)
-        for archive in receipt['archives']:
+        for archive in receipt['archives'] + unsupported:
             relative = archive['relative_path']
             original = extracted / 'RomFS' / relative
             target = romfs / relative
@@ -116,7 +121,8 @@ def prepare_assets(repo: Path, extracted: Path, rewritten: Path, output: Path, p
                 raise ValueError(f'Source/output integrity mismatch: {relative}')
         record = {'preset': display.preset, 'model': display.model, 'aspect': display.ratio, 'live_display': display.live,
                   'main_build_id': pad.BUILD_ID, 'modules_sha256': MODULES,
-                  'camera': camera, 'layouts': receipt, 'patched': str(patched), 'romfs': str(romfs)}
+                  'camera': camera, 'layouts': receipt, 'balloon_world_unsupported': unsupported,
+                  'patched': str(patched), 'romfs': str(romfs)}
         # Replace staging prefixes only in our local receipt; original paths stay intact.
         record = json.loads(json.dumps(record).replace(str(stage), str(output)))
         (stage / 'receipt.json').write_text(json.dumps(record, indent=2) + '\n')

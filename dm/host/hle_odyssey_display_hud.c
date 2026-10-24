@@ -133,7 +133,7 @@ static int hud_skip_owner(const char *owner) {
 }
 typedef struct { const char *owner, *anchor; float x, y; int sign; } hud_edge;
 static const hud_edge hud_edges[] = {
-    {"CounterCoin","All",-600,296,1}, {"CounterLife","All",556,284,1},
+    {"CounterCoin","All",-600,296,1}, {"CounterCollectCoin","All",-475,302.5f,1}, {"CounterLife","All",556,284,1},
     {"CounterLifeKids","All",556,284,1}, {"CounterLifeUp","All",556,284,1},
     {"CounterShine","All",-596,266,1}, {"MapMini","All",556,157,1},
     {"PlayGuideMenu","PicCaptureUse",556,220,1}, {"PlayGuideCamera","All",546,94,1},
